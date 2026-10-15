@@ -538,3 +538,65 @@ flowchart LR
   Kubernetes restarts on liveness failures and removes from Services on readiness failures.
 - *Where do you look for ImagePullBackOff?* `kubectl describe pod` Events – the exact image reference and
   the registry's error are there.
+
+---
+
+## Phase 11 – Infrastructure as Code (Terraform), GitOps (Argo CD) and documentation
+
+**In one line:** the cloud network and cluster are described as code that can be planned, reviewed,
+applied and destroyed. The cluster's contents are described in git, and Argo CD keeps them in sync.
+
+**What I built**
+- `terraform/`: a VPC (2 public + 2 private subnets, 1 NAT), EKS 1.34 with a 2 × t3.medium node group, addons
+  (incl. the EBS CSI driver with an IRSA role and metrics-server), outputs, and a runbook
+  ([terraform/README.md](terraform/README.md)) with cost and teardown order.
+- `argocd/foundit-app.yaml`: the Application (repo → `helm/foundit` at `main` → namespace `foundit`).
+- `argocd/argocd-values.yaml`: a lean Argo CD install.
+- Hardening from the Trivy **config** scan: read-only root filesystems everywhere, postgres as uid 70,
+  explicit `USER 101`, the EKS API limited to my IP. Accepted risks are in `.trivyignore` with reasons.
+- `README.md`: what the app does, how to run each layer, the pipeline, the Trivy explanation, and the rubric map.
+
+```bash
+terraform fmt -check -recursive && terraform init -backend=false && terraform validate   # offline checks
+trivy config --ignorefile .trivyignore --skip-dirs troubleshooting .                    # IaC scan
+```
+
+**Concepts**
+
+| Terraform command | Does |
+|---|---|
+| `init` | downloads providers + modules, sets up the backend (where state lives) |
+| `validate` | the HCL is syntactically and type-correct (no AWS calls) |
+| `plan` | compares code with state + reality and prints what *would* change |
+| `apply` | makes the changes and records them in state |
+| `destroy` | deletes everything in state |
+
+| Term | Meaning |
+|---|---|
+| state | Terraform's record of what it created, mapping code to real resource IDs |
+| module | a reusable package of resources (here: VPC, EKS, IAM role) |
+| IRSA | IAM Roles for Service Accounts: a Kubernetes service account assumes an AWS role via OIDC |
+| GitOps | git is the source of truth for what runs; an in-cluster agent makes reality match it |
+
+**Gotchas I hit**
+- The first Trivy config scan flagged real things in *my* chart (no read-only root FS) and the Dockerfile
+  (no explicit `USER`). It also flagged code inside `terraform/.terraform/modules`, which is downloaded,
+  not mine, so that directory is skipped.
+- Making nginx's root filesystem read-only means giving it writable `emptyDir`s for `/tmp` and
+  `/etc/nginx/conf.d`, because the entrypoint renders the template into conf.d at start.
+- Postgres can run read-only too, if it starts as uid 70 directly (instead of root + gosu) and gets
+  `emptyDir`s for `/var/run/postgresql` and `/tmp`. The existing data survived the switch.
+- The containerised Trivy didn't pick up `.trivyignore` (its working directory is `/`, not the repo):
+  pass `--ignorefile` explicitly, and `trivyignores:` in the CI step.
+- Kubernetes creates the load balancer and EBS volume, not Terraform. So `terraform destroy` can
+  hang on the VPC unless the app and ingress-nginx are uninstalled first.
+
+**Viva answers**
+- *Why Terraform instead of clicking in the console?* It's repeatable, reviewable (`plan`), versioned
+  in git, and `destroy` removes exactly what was created, so there are no forgotten resources.
+- *Why are the nodes in private subnets?* They have no public IPs, so they can't be reached from the
+  internet. They still pull images through the NAT gateway, and only the load balancer is public.
+- *What is in `terraform.tfvars.example` and why not `terraform.tfvars`?* The shape of the inputs without
+  my values; the real file is git-ignored. AWS keys never go in either. They live in `~/.aws`.
+- *Why GitOps on top of CI/CD?* The cluster pulls its desired state from git: CI needs no cluster
+  credentials, every deployment is a commit (auditable, revertable), and drift is corrected automatically.

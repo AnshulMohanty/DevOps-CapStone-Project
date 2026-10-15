@@ -116,6 +116,7 @@ One table, `items`.
 | `troubleshooting/` | deliberately broken manifests + [lab guide](troubleshooting/README.md) |
 | `terraform/` | AWS VPC + EKS |
 | `scripts/` | helper scripts (load test) |
+| `.trivyignore` | accepted Trivy findings, each with its reason |
 | `docs/screenshots/` | evidence for the grading checklist |
 
 ## 6. Config and secrets
@@ -179,6 +180,13 @@ One table, `items`.
 | D44 | HPA max 3 on minikube, scale-down stabilization 120 s | the node fits 3 backends next to monitoring; 120 s (default 300 s) shows the full up-and-down cycle in a demo |
 | D45 | The app starts even when the DB is unreachable; `/ready` returns 503 and logs the driver's message | a DB outage removes pods from rotation with a clear log line instead of a CrashLoopBackOff; found while building lab 3 |
 | D46 | Troubleshooting labs are standalone `foundit-lab-*` objects next to the release | they can be broken and fixed live without touching the real deployment (or confusing Argo CD) |
+| D47 | Terraform uses the community VPC (5.8.1) and EKS (20.37.1) modules, AWS provider 5.x, local state | versions already proven in topic 20; local state is fine for one person and one short window (S3 + lockfile for a team) |
+| D48 | One NAT gateway, 2 AZs, nodes in private subnets, load balancers in public subnets | the NAT gateway is the most expensive VPC part; one AZ outage is an accepted risk for a demo |
+| D49 | EKS addons managed by Terraform: vpc-cni, coredns, kube-proxy, **aws-ebs-csi-driver with an IRSA role**, metrics-server | without the EBS CSI driver the Postgres PVC stays Pending; IRSA gives volume permissions to one service account instead of every node |
+| D50 | `api_allowed_cidrs` has no default and rejects `0.0.0.0/0` | the EKS API is public (kubectl from my laptop) but only to my IP; nobody can open it to the internet by accident |
+| D51 | Pods use read-only root filesystems (backend, frontend, init container, postgres) with `emptyDir` for the paths that must be writable; postgres runs as uid 70 | a compromised process can't modify its own image; found by the Trivy config scan |
+| D52 | `.trivyignore` holds accepted findings, each with a written reason; CI's config scan skips the deliberately broken labs | accepted risk is documented and reviewable instead of silently ignored |
+| D53 | Argo CD installed lean (no Dex, notifications or ApplicationSet), polls every 60 s; Application uses automated sync + prune + selfHeal | fits next to the app and monitoring; the live demo doesn't wait 3 minutes; manual drift is reverted |
 
 ## 8. Phase status
 
@@ -194,5 +202,5 @@ One table, `items`.
 | 8 | Helm + minikube | ✅ done | [helm + kubectl](docs/screenshots/13_helm_minikube.png), [UI via Ingress](docs/screenshots/14_ui_ingress.png) |
 | 9 | Monitoring + HPA | ✅ done | [targets UP](docs/screenshots/15_prometheus_targets.png), [alert rules](docs/screenshots/16_prometheus_alerts.png), [Grafana](docs/screenshots/17_grafana_dashboard.png), [HPA 2→3→2](docs/screenshots/18_hpa_scaling.png) |
 | 10 | Troubleshooting labs | ✅ done | [ImagePullBackOff](docs/screenshots/19_lab_broken_image.png), [no endpoints](docs/screenshots/20_lab_broken_service.png), [never Ready](docs/screenshots/21_lab_broken_readiness.png) |
-| 11 | Terraform + Argo CD + README | ⏳ | |
+| 11 | Terraform + Argo CD + README | ✅ code done (Argo CD sync tested in 12B, AWS in 12C) | [validate + IaC scan](docs/screenshots/22_terraform_validate.png), [/metrics](docs/screenshots/23_metrics_endpoint.png) |
 | 12 | Guided manual phase: push, GHCR, GitOps demo, AWS | ⏳ | |

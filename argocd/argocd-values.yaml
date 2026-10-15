@@ -1,0 +1,31 @@
+# Argo CD (argo/argo-cd Helm chart), trimmed for the single small minikube node.
+#   helm repo add argo https://argoproj.github.io/argo-helm
+#   helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace -f argocd/argocd-values.yaml --wait
+# Only the parts GitOps needs: API/UI server, repo server (renders Helm), application controller, redis.
+dex:
+  enabled: false              # no SSO - the built-in admin user is enough locally
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 0                 # one Application, no generators needed
+configs:
+  params:
+    server.insecure: true     # plain HTTP behind kubectl port-forward
+  cm:
+    timeout.reconciliation: 60s   # poll git every minute instead of 3 (faster live demo)
+controller:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}
+repoServer:
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 256Mi}
+server:
+  resources:
+    requests: {cpu: 20m, memory: 48Mi}
+    limits: {memory: 160Mi}
+redis:
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {memory: 64Mi}

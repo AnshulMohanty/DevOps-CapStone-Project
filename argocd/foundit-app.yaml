@@ -1,0 +1,36 @@
+# Argo CD Application: "the foundit namespace on this cluster must always match helm/foundit at main".
+#   kubectl apply -f argocd/foundit-app.yaml
+# CI never deploys. It commits the new image tag to helm/foundit/values-image.yaml; Argo CD notices the
+# commit (polls every ~3 min, or press Refresh) and rolls the Deployments forward.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: foundit
+  namespace: argocd
+  # Deleting the Application also deletes what it deployed (the PVC is kept by its own annotation).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/AnshulMohanty/DevOps-CapStone-Project.git
+    targetRevision: main
+    path: helm/foundit
+    helm:
+      releaseName: foundit
+      valueFiles:
+        - values-minikube.yaml
+        - values-image.yaml        # the only file CI changes
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: foundit
+  syncPolicy:
+    automated:
+      prune: true                  # objects removed from git are removed from the cluster
+      selfHeal: true               # manual kubectl edits are reverted to what git says
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff: {duration: 10s, factor: 2, maxDuration: 1m}
+  revisionHistoryLimit: 10

@@ -146,6 +146,9 @@ One table, `items`.
 | D11 | The model declares the same index as migration 0001, and CI runs `alembic check` | models and migrations cannot silently drift apart |
 | D12 | Tests run on a temp SQLite file set in `conftest.py` before the app is imported | fast, no Postgres needed for unit tests; real-Postgres behaviour is covered by the CI migrations job |
 | D13 | Tests assert *deltas* (before/after) for stats and metrics, never absolute totals | the session-scoped DB is shared by all tests, so absolute counts would depend on test order |
+| D14 | The browser only calls relative `/api/...` URLs | the same build works under Vite's dev proxy, nginx in compose and the Ingress in Kubernetes – no API URL is baked into the bundle |
+| D15 | Filtering and search happen on the server (query params), with a 250 ms debounce on search | it exercises the API filters and stays correct as the list grows |
+| D16 | UI version comes from `package.json` via Vite `define` and is shown in the footer | bumping it is a one-line, visible change for the live GitOps demo |
 
 ## 8. Phase status
 
@@ -155,7 +158,7 @@ One table, `items`.
 | 2 | Backend | ✅ done | [API calls](docs/screenshots/02_backend_api.png), [Swagger](docs/screenshots/03_swagger.png) |
 | 3 | Alembic migrations | ✅ done | [up/down/up + check](docs/screenshots/04_migrations.png) |
 | 4 | Tests | ✅ done – 22 passing | [pytest -v](docs/screenshots/05_pytest.png) |
-| 5 | Frontend | ⏳ | |
+| 5 | Frontend | ✅ done | [board](docs/screenshots/06_ui_board.png), [report modal](docs/screenshots/07_ui_report_modal.png), [API down](docs/screenshots/08_ui_backend_down.png) |
 | 6 | Docker + Compose | ⏳ | |
 | 7 | CI/CD workflow | ⏳ | |
 | 8 | Helm + minikube | ⏳ | |

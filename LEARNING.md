@@ -197,3 +197,52 @@ docker run --rm -v "$PWD:/src:ro" python:3.12-slim sh -c "cp -r /src /app && cd 
   behaviour (the migrations) is tested separately against a real Postgres service container in CI.
 - *What does a failing test do in the pipeline?* The `test` job fails, and `build-scan-push` `needs` it,
   so no image is built or pushed – a broken commit never reaches a cluster.
+
+---
+
+## Phase 5 – Frontend (React + Vite)
+
+**In one line:** a static bundle (HTML + JS + CSS) that runs in the browser and talks to the backend only
+through relative `/api/...` URLs – whoever serves it decides where `/api` goes.
+
+**What I built**
+- `src/api.js` – one `request()` helper; turns FastAPI's 422 `detail` list into a readable message.
+- `src/App.jsx` – state, loading (skeleton cards), empty, and API-error (banner + Retry) states.
+- `components/` – `StatsCards`, `Toolbar` (All/Lost/Found tabs, search, category + status filters),
+  `ItemCard` (badges, Mark claimed / Mark returned / Delete), `ReportModal` (lost/found toggle, validation).
+- Responsive: 4 → 2 KPI columns, card grid uses `auto-fill`, filters stack on phones.
+
+```bash
+npm install          # writes package-lock.json - CI and Docker use `npm ci` with this exact lock
+npm run dev          # http://localhost:5173, /api proxied to localhost:8000
+npm run build        # dist/ - the static files nginx serves
+```
+
+**Concepts**
+
+```mermaid
+flowchart LR
+    B["browser<br/>fetch('/api/items')"] --> V{"who serves the page?"}
+    V -->|"npm run dev"| VP["Vite proxy → :8000"]
+    V -->|"docker compose"| NG["nginx proxy_pass → backend:8000"]
+    V -->|"Kubernetes"| IN["Ingress /api → backend Service"]
+```
+
+| `package.json` field | Meaning |
+|---|---|
+| `dependencies` | shipped in the bundle (react, react-dom) |
+| `devDependencies` | only needed to build (vite, the React plugin) |
+| exact versions (`19.3.0`, not `^19`) + lock file | the CI build is the same as my build |
+
+**Gotchas**
+- An error must not also show "Nothing here yet" – that tells the user the board is empty when it is
+  actually unreachable.
+- A `<label>` styled as a grid puts every child on its own row – wrap mixed text in one `<span>`.
+- Headless Chrome has a minimum window width, so a 390 px `--window-size` screenshot is *not* a phone
+  view; I used DevTools device emulation instead.
+
+**Viva answers**
+- *Why relative URLs?* The same image runs in every environment; the routing layer (nginx/Ingress)
+  is environment config, not app code.
+- *Where is the frontend's "server"?* There is none at runtime – after `npm run build` it is static
+  files; nginx serves them and proxies `/api`.

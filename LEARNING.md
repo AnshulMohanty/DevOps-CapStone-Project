@@ -353,3 +353,71 @@ flowchart LR
   push, smoke deploy and bump never run, so Argo CD never hears about it.
 - *Push vs pull deployment?* CI could `kubectl apply` (push) but would need cluster credentials. With
   GitOps the cluster pulls desired state from git – fewer secrets, drift is corrected automatically.
+
+---
+
+## Phase 8 – Kubernetes with Helm (minikube)
+
+**In one line:** the same images, now as a self-healing set of pods behind Services and an Ingress,
+packaged as one versioned Helm release that can be upgraded and rolled back.
+
+**What I built** – chart `helm/foundit/`:
+
+| Template | Objects |
+|---|---|
+| `backend.yaml` | Deployment (init container, 3 probes, non-root, read-only FS) + ClusterIP Service `http:8000` |
+| `frontend.yaml` | Deployment (nginx, probes on `/healthz`) + ClusterIP Service `80 → 8080` |
+| `postgres.yaml` | Secret, Service, Deployment (`Recreate`, `PGDATA` sub-dir), PVC (kept on uninstall) |
+| `ingress.yaml` | `/api` → backend, `/` → frontend, optional host |
+| `autoscaling.yaml` | HPA 2..N on CPU 60% + PodDisruptionBudget |
+| `servicemonitor.yaml` | only if the Prometheus Operator CRD exists |
+| `_helpers.tpl` | names, labels, image ref, security settings – defined once |
+
+```bash
+minikube start -p devops                                   # docker driver; ingress + metrics-server addons
+minikube -p devops image load ghcr.io/anshulmohanty/foundit-backend:local
+helm lint helm/foundit -f helm/foundit/values-minikube.yaml
+helm upgrade --install foundit helm/foundit -n foundit -f helm/foundit/values-minikube.yaml -f helm/foundit/values-image.yaml --wait
+helm history foundit -n foundit    # every upgrade is a numbered revision
+helm rollback foundit 1 -n foundit # back to revision 1
+```
+
+**Concepts**
+
+```mermaid
+flowchart LR
+    U["curl -H 'Host: foundit.local'"] --> IC["ingress-nginx controller"]
+    IC -->|"/api"| BS["Service foundit-backend :8000"]
+    IC -->|"/"| FS["Service foundit-frontend :80"]
+    BS --> B1["backend pod"] & B2["backend pod"]
+    FS --> F1["frontend pod"] & F2["frontend pod"]
+    B1 & B2 --> PS["Service foundit-postgres :5432"] --> PG["postgres pod + PVC"]
+```
+
+| Object | Answers |
+|---|---|
+| Deployment | how many copies of which image, and how to roll them |
+| Service | a stable name + IP in front of changing pods (selected by labels) |
+| Ingress | which URL path/host goes to which Service |
+| Secret | the DB credentials, injected as env vars |
+| PVC | storage that outlives the pod |
+| HPA | how many backend pods the CPU load needs |
+| PDB | how many pods must survive voluntary disruptions |
+
+**Gotchas I hit**
+- **`pg_isready` said "no attempt" forever.** The pod-level `runAsUser: 10001` also applies to the init
+  container; that uid has no user name, so `pg_isready` had no default user. Passing `-U foundit` fixed it.
+  `kubectl logs <pod> -c wait-for-postgres` showed it in seconds.
+- The minikube container had disappeared since the last session (Docker reset), so the profile was
+  recreated – addons and Argo CD have to be installed again.
+- On Windows with the docker driver the node IP `192.168.58.2` is not reachable from the host; a
+  port-forward to the ingress controller plus a `Host:` header goes through the real Ingress rules.
+- HPA shows `cpu: <unknown>` for the first minute, until metrics-server has collected samples.
+
+**Viva answers**
+- *Why Helm instead of plain YAML?* One parameterised chart for minikube, kind and EKS; releases are
+  versioned, so `helm rollback` is one command.
+- *Why does the backend Deployment have no `replicas` field?* The HPA owns it; Helm/Argo CD would
+  otherwise reset it to 2 on every sync.
+- *What happens to the data on `helm uninstall`?* The PVC has `helm.sh/resource-policy: keep`, so the
+  database volume survives; it is deleted only on purpose.

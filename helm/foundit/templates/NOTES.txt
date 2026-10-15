@@ -1,0 +1,22 @@
+FoundIt {{ .Chart.AppVersion }} is installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+  backend  image: {{ include "foundit.image" (dict "ctx" . "image" .Values.backend.image) }}
+  frontend image: {{ include "foundit.image" (dict "ctx" . "image" .Values.frontend.image) }}
+
+{{- if .Values.ingress.enabled }}
+{{- if .Values.ingress.host }}
+
+Open http://{{ .Values.ingress.host }}/  (point {{ .Values.ingress.host }} at the ingress controller's IP)
+{{- else }}
+
+Open the ingress controller's external address:
+  kubectl get svc -n ingress-nginx ingress-nginx-controller
+{{- end }}
+{{- else }}
+
+kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "foundit.frontend" . }} 8080:80
+then open http://localhost:8080/
+{{- end }}
+
+Check it:
+  kubectl get pods,svc,ingress,hpa -n {{ .Release.Namespace }}

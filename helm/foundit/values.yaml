@@ -1,0 +1,60 @@
+# Defaults shared by every environment. values-<env>.yaml overrides what differs,
+# and values-image.yaml (written by CI) pins the image tags.
+
+imagePullSecrets: []
+
+backend:
+  image:
+    repository: ghcr.io/anshulmohanty/foundit-backend
+    tag: ""                 # empty = Chart appVersion; CI/Argo CD set the commit SHA
+    pullPolicy: IfNotPresent
+  replicas: 2               # ignored while the HPA is enabled - the HPA owns the count
+  appVersion: ""            # APP_VERSION shown by GET / ; empty = Chart appVersion
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+frontend:
+  image:
+    repository: ghcr.io/anshulmohanty/foundit-frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+
+postgres:
+  image: postgres:16-alpine
+  database: foundit
+  username: foundit
+  # Demo default. For a real deployment pass --set postgres.password=... or use an external secret store.
+  password: foundit
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""        # "" = the cluster's default StorageClass
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+ingress:
+  enabled: true
+  className: nginx
+  host: ""                  # "" = match any host (needed for a bare cloud load-balancer hostname)
+  annotations: {}
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 60
+
+pdb:
+  enabled: true             # keep at least one backend pod during node drains / upgrades
+
+serviceMonitor:
+  enabled: true             # only rendered when the Prometheus Operator CRDs exist
+  interval: 15s
+  labels:
+    release: kube-prometheus-stack   # the label kube-prometheus-stack selects ServiceMonitors by

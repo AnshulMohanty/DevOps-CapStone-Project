@@ -161,6 +161,15 @@ One table, `items`.
 | D26 | CD is GitOps: CI commits the new tag to `values-image.yaml`, Argo CD syncs the cluster | CI needs no cluster credentials; git is the audit log of what ran when; rollback = `git revert` |
 | D27 | `concurrency` group per branch | two runs on main can never push competing bump commits |
 | D28 | Trivy `config` scan of the chart and Terraform is report-only | misconfig findings are advice to review; a CVE in a shipped image is a hard stop |
+| D29 | Recommended `app.kubernetes.io/*` labels; selectors use only name + instance + component | a Deployment selector is immutable – keeping it minimal means a chart/app version bump never breaks upgrades |
+| D30 | `values.yaml` (defaults) + `values-<env>.yaml` (environment) + `values-image.yaml` (tags, owned by CI) | the only file CI ever edits is the one with tags, so a bump commit can't change anything else |
+| D31 | HPA enabled ⇒ the Deployment omits `replicas` | otherwise every sync/upgrade resets the count and fights the HPA |
+| D32 | Backend: startup + liveness on `/health`, readiness on `/ready`; frontend probes nginx's own `/healthz` | migrations get time to run; a DB outage removes backend pods from the Service instead of restarting them; a backend outage never restarts the UI |
+| D33 | Pod security: non-root uid, `allowPrivilegeEscalation: false`, drop ALL capabilities, seccomp RuntimeDefault; backend also `readOnlyRootFilesystem` | least privilege; the backend writes nothing to disk |
+| D34 | `maxUnavailable: 0, maxSurge: 1` + PodDisruptionBudget `minAvailable: 1` | rolling updates and node drains never take the API to zero |
+| D35 | Postgres as a single-replica Deployment with a `Recreate` strategy, PVC kept on uninstall (`helm.sh/resource-policy: keep`) | an RWO volume can only be mounted by one pod; deleting the release must not delete the data. Production would use RDS. |
+| D36 | Ingress with an optional host (`foundit.local` on minikube, none on EKS) | the EKS load balancer has a generated hostname that is not known in advance |
+| D37 | Init container `wait-for-postgres` runs `pg_isready -U <user>` | avoids a CrashLoopBackOff race on first install; `-U` is needed because uid 10001 has no user name |
 
 ## 8. Phase status
 
@@ -173,7 +182,7 @@ One table, `items`.
 | 5 | Frontend | ✅ done | [board](docs/screenshots/06_ui_board.png), [report modal](docs/screenshots/07_ui_report_modal.png), [API down](docs/screenshots/08_ui_backend_down.png) |
 | 6 | Docker + Compose | ✅ done | [compose up + psql + non-root](docs/screenshots/09_compose_up.png), [UI on :3000](docs/screenshots/10_ui_compose.png), [Trivy](docs/screenshots/11_trivy_local.png) |
 | 7 | CI/CD workflow | ✅ written + actionlint clean (first real run in Phase 12A) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) |
-| 8 | Helm + minikube | ⏳ | |
+| 8 | Helm + minikube | ✅ done | [helm + kubectl](docs/screenshots/13_helm_minikube.png), [UI via Ingress](docs/screenshots/14_ui_ingress.png) |
 | 9 | Monitoring + HPA | ⏳ | |
 | 10 | Troubleshooting labs | ⏳ | |
 | 11 | Terraform + Argo CD + README | ⏳ | |

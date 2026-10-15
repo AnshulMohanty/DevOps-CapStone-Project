@@ -1,0 +1,21 @@
+{{- /* Only when the Prometheus Operator CRD exists - otherwise the install fails with "no matches for kind ServiceMonitor". */}}
+{{- if and .Values.serviceMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "foundit.backend" . }}
+  labels:
+    {{- include "foundit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "foundit.selectorLabels" (dict "ctx" . "component" "backend") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

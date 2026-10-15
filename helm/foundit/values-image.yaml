@@ -1,0 +1,9 @@
+# Written by the CI gitops-bump job - do not edit by hand.
+# Argo CD reads this file, so changing it is what deploys a new version.
+# "local" = images built on this machine and loaded into minikube (before the first CI run).
+backend:
+  image:
+    tag: "local"
+frontend:
+  image:
+    tag: "local"

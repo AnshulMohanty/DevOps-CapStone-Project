@@ -1,0 +1,9 @@
+apiVersion: v2
+name: foundit
+description: FoundIt - campus lost & found board (FastAPI + React + PostgreSQL)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [foundit, fastapi, react, postgres]
+maintainers:
+  - name: Anshul Mohanty

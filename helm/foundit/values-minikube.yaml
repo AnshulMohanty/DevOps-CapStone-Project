@@ -1,0 +1,9 @@
+# Local cluster: minikube profile "devops" (one ~2.7 GiB node that also runs Argo CD and monitoring).
+ingress:
+  host: foundit.local
+backend:
+  resources:
+    requests: {cpu: 100m, memory: 96Mi}
+    limits: {cpu: 300m, memory: 192Mi}
+hpa:
+  maxReplicas: 4            # the node cannot fit more next to the monitoring stack

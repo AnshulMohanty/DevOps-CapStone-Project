@@ -1,0 +1,10 @@
+# AWS EKS (2 x t3.medium). The Ingress has no host so it answers on the ELB hostname,
+# and the database volume is an EBS disk provisioned by the EBS CSI driver.
+ingress:
+  host: ""
+postgres:
+  persistence:
+    storageClass: gp2
+    size: 2Gi
+hpa:
+  maxReplicas: 6

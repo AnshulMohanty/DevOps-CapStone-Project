@@ -1,0 +1,106 @@
+{{- $component := dict "ctx" . "component" "postgres" -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "foundit.postgres" . }}
+  labels:
+    {{- include "foundit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+type: Opaque
+stringData:
+  username: {{ .Values.postgres.username | quote }}
+  password: {{ .Values.postgres.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "foundit.postgres" . }}
+  labels:
+    {{- include "foundit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "foundit.selectorLabels" $component | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "foundit.postgres" . }}
+  labels:
+    {{- include "foundit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  # Recreate: the old pod must release the ReadWriteOnce volume before the new one can mount it.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "foundit.selectorLabels" $component | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "foundit.selectorLabels" $component | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 70            # the postgres user in the alpine image; lets it write to a fresh volume
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - {name: POSTGRES_DB, value: {{ .Values.postgres.database | quote }}}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: {{ include "foundit.postgres" . }}, key: username}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "foundit.postgres" . }}, key: password}}
+            # A sub-directory, because a fresh cloud disk (EBS) has lost+found at its root
+            # and initdb refuses to initialise a non-empty directory.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          readinessProbe:
+            exec: {command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec: {command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+      volumes:
+        - name: data
+          {{- if .Values.postgres.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "foundit.postgres" . }}-data
+          {{- else }}
+          emptyDir: {}       # no persistence: data is lost when the pod is replaced
+          {{- end }}
+{{- if .Values.postgres.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "foundit.postgres" . }}-data
+  labels:
+    {{- include "foundit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+  annotations:
+    # Uninstalling the release (or Argo CD pruning) must not delete the database.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.postgres.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+{{- end }}

@@ -1,0 +1,24 @@
+# LAB 2 - a Service with no endpoints
+# The pods are healthy, but the Service selects a label no pod has, so it has no endpoints
+# and every request to it fails - even though "kubectl get pods" looks perfect.
+#   kubectl apply -f troubleshooting/broken-service.yaml
+#   kubectl run curl -n foundit --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- curl -s -m 5 foundit-lab-api:8000/health
+#   kubectl get endpointslices -n foundit -l kubernetes.io/service-name=foundit-lab-api   -> ENDPOINTS <unset>
+#   kubectl get svc foundit-lab-api -n foundit -o wide                                    -> SELECTOR
+#   kubectl get pods -n foundit --show-labels                                             -> compare
+# Fix: make the selector match the backend pods' labels:
+#   kubectl patch svc foundit-lab-api -n foundit --type merge -p '{"spec":{"selector":{"app.kubernetes.io/component":"backend"}}}'
+# Clean up: kubectl delete -f troubleshooting/broken-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: foundit-lab-api
+  namespace: foundit
+  labels: {lab: broken-service}
+spec:
+  selector:
+    app.kubernetes.io/name: foundit
+    app.kubernetes.io/component: api    # BUG: the backend pods are labelled component=backend
+  ports:
+    - port: 8000
+      targetPort: 8000

@@ -1,0 +1,64 @@
+# LAB 3 - Running but never Ready (FoundIt-specific)
+# A backend copy is deployed with the wrong database password. The process starts and /health is fine,
+# so the pod is NOT restarted - but /ready runs a real query, gets 503, and the pod never becomes Ready.
+# Its Service therefore has no ready endpoints and receives no traffic: a broken pod is kept out of rotation.
+#   kubectl apply -f troubleshooting/broken-readiness.yaml
+#   kubectl get pods -n foundit -l lab=broken-readiness          -> 0/1 Running, RESTARTS 0
+#   kubectl describe pod -n foundit -l lab=broken-readiness      -> "Readiness probe failed: HTTP probe failed with statuscode: 503"
+#   kubectl logs -n foundit -l lab=broken-readiness              -> "readiness check failed: ... password authentication failed"
+#   kubectl get endpointslices -n foundit -l kubernetes.io/service-name=foundit-lab-ready   -> ready=false
+# Fix: take the password from the same Secret the real backend uses. This replaces DB_PASSWORD in place,
+# so $(DB_PASSWORD) inside DATABASE_URL still resolves:
+#   kubectl set env deploy/foundit-lab-ready -n foundit --from=secret/foundit-postgres --keys=password --prefix=DB_
+# Clean up: kubectl delete -f troubleshooting/broken-readiness.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foundit-lab-ready
+  namespace: foundit
+  labels: {lab: broken-readiness}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {lab: broken-readiness}
+  template:
+    metadata:
+      labels: {lab: broken-readiness}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      containers:
+        - name: api
+          image: ghcr.io/anshulmohanty/foundit-backend:local
+          imagePullPolicy: IfNotPresent
+          # Skip the migrations: they would fail on the bad password and turn this into a CrashLoopBackOff.
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          env:
+            - {name: DB_PASSWORD, value: "letmein"}   # BUG: hard-coded, and wrong
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://foundit:$(DB_PASSWORD)@foundit-postgres:5432/foundit"
+          ports: [{name: http, containerPort: 8000}]
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 160Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: foundit-lab-ready
+  namespace: foundit
+  labels: {lab: broken-readiness}
+spec:
+  selector: {lab: broken-readiness}
+  ports:
+    - port: 8000
+      targetPort: http

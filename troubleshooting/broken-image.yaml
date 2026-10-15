@@ -1,0 +1,32 @@
+# LAB 1 - ImagePullBackOff
+# A release goes out with a tag that was never pushed (a typo in the version).
+#   kubectl apply -f troubleshooting/broken-image.yaml
+#   kubectl get pods -n foundit -l lab=broken-image          -> ErrImagePull, then ImagePullBackOff
+#   kubectl describe pod -n foundit -l lab=broken-image      -> Events: "...not found" / "failed to resolve reference"
+# Fix: point it at a tag that exists, e.g.
+#   kubectl set image deploy/foundit-lab-image -n foundit api=ghcr.io/anshulmohanty/foundit-backend:local
+# Clean up: kubectl delete -f troubleshooting/broken-image.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foundit-lab-image
+  namespace: foundit
+  labels: {lab: broken-image}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {lab: broken-image}
+  template:
+    metadata:
+      labels: {lab: broken-image}
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/anshulmohanty/foundit-backend:v1.0.O   # BUG: capital letter O instead of zero
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          env:
+            - {name: DATABASE_URL, value: "sqlite:////tmp/lab.db"}
+          ports: [{containerPort: 8000}]
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 200m, memory: 160Mi}

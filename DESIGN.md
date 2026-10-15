@@ -113,7 +113,7 @@ One table, `items`.
 | `helm/foundit/` | the Helm chart + values per environment |
 | `monitoring/` | kube-prometheus-stack values, Grafana dashboard, alert rules |
 | `argocd/` | Argo CD Application (GitOps) |
-| `troubleshooting/` | deliberately broken manifests for the debugging labs |
+| `troubleshooting/` | deliberately broken manifests + [lab guide](troubleshooting/README.md) |
 | `terraform/` | AWS VPC + EKS |
 | `scripts/` | helper scripts (load test) |
 | `docs/screenshots/` | evidence for the grading checklist |
@@ -177,6 +177,8 @@ One table, `items`.
 | D42 | Alert rules as a `PrometheusRule`: backend down, 5xx > 5%, p95 > 1 s, HPA at max | each one answers "should a human look now?"; the HPA-at-max rule says scaling has run out of room |
 | D43 | Load test runs inside the cluster, light (6 clients) | no port-forward bottleneck; a heavier test starved the single node |
 | D44 | HPA max 3 on minikube, scale-down stabilization 120 s | the node fits 3 backends next to monitoring; 120 s (default 300 s) shows the full up-and-down cycle in a demo |
+| D45 | The app starts even when the DB is unreachable; `/ready` returns 503 and logs the driver's message | a DB outage removes pods from rotation with a clear log line instead of a CrashLoopBackOff; found while building lab 3 |
+| D46 | Troubleshooting labs are standalone `foundit-lab-*` objects next to the release | they can be broken and fixed live without touching the real deployment (or confusing Argo CD) |
 
 ## 8. Phase status
 
@@ -191,6 +193,6 @@ One table, `items`.
 | 7 | CI/CD workflow | ✅ written + actionlint clean (first real run in Phase 12A) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) |
 | 8 | Helm + minikube | ✅ done | [helm + kubectl](docs/screenshots/13_helm_minikube.png), [UI via Ingress](docs/screenshots/14_ui_ingress.png) |
 | 9 | Monitoring + HPA | ✅ done | [targets UP](docs/screenshots/15_prometheus_targets.png), [alert rules](docs/screenshots/16_prometheus_alerts.png), [Grafana](docs/screenshots/17_grafana_dashboard.png), [HPA 2→3→2](docs/screenshots/18_hpa_scaling.png) |
-| 10 | Troubleshooting labs | ⏳ | |
+| 10 | Troubleshooting labs | ✅ done | [ImagePullBackOff](docs/screenshots/19_lab_broken_image.png), [no endpoints](docs/screenshots/20_lab_broken_service.png), [never Ready](docs/screenshots/21_lab_broken_readiness.png) |
 | 11 | Terraform + Argo CD + README | ⏳ | |
 | 12 | Guided manual phase: push, GHCR, GitOps demo, AWS | ⏳ | |

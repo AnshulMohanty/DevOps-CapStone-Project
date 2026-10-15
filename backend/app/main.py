@@ -17,6 +17,12 @@ from .schemas import Category, ItemCreate, ItemOut, ItemType, ItemUpdate, StatsO
 log = logging.getLogger("foundit")
 
 
+def db_error(exc: SQLAlchemyError) -> str:
+    """The driver's own message, e.g. 'password authentication failed for user "foundit"'."""
+    lines = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+    return lines[-1] if lines else exc.__class__.__name__
+
+
 def refresh_open_gauge(db: Session) -> None:
     rows = db.execute(
         select(Item.type, func.count(Item.id)).where(Item.status != "RETURNED").group_by(Item.type)
@@ -37,7 +43,7 @@ async def lifespan(app: FastAPI):
         with SessionLocal() as db:
             refresh_open_gauge(db)
     except SQLAlchemyError as exc:
-        log.warning("database not reachable at startup, /ready will report 503 until it is: %s", exc.__class__.__name__)
+        log.warning("database not reachable at startup, /ready will report 503 until it is: %s", db_error(exc))
     yield
 
 
@@ -70,7 +76,8 @@ def ready(db: Session = Depends(get_db)):
     # readiness probe takes the pod out of the Service until it recovers.
     try:
         db.execute(select(func.count(Item.id)))
-    except SQLAlchemyError:
+    except SQLAlchemyError as exc:
+        log.warning("readiness check failed: %s", db_error(exc))
         raise HTTPException(status_code=503, detail="Database unavailable")
     return {"status": "READY"}
 

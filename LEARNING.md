@@ -494,3 +494,47 @@ flowchart LR
 - *Pull vs push metrics?* Prometheus pulls; a target that stops answering shows as DOWN, which is itself an alert.
 - *Why a ServiceMonitor instead of editing prometheus.yml?* It is a Kubernetes object that ships with the
   app's chart; the operator turns it into scrape config, so the app owns its own monitoring.
+
+---
+
+## Phase 10 – Troubleshooting labs
+
+**In one line:** break the deployment on purpose in three realistic ways, and practise the
+*look → narrow down → prove → fix* loop with kubectl until it is a habit.
+
+**What I built** – `troubleshooting/` ([guide](troubleshooting/README.md)):
+
+| Lab | What I saw | The command that gave it away | Fix |
+|---|---|---|---|
+| broken-image | `ImagePullBackOff` | `kubectl describe pod` → `failed to pull … v1.0.O` | `kubectl set image` |
+| broken-service | curl exit 7, pods all fine | `kubectl get endpointslices` → `<unset>` | selector → `component=backend` |
+| broken-readiness | `0/1 Running`, 0 restarts | `describe` → readiness 503; `logs` → `password authentication failed` | `kubectl set env --from=secret/…` |
+
+**Concepts**
+
+| Status | Means | Look at |
+|---|---|---|
+| `Pending` | not scheduled yet | Events: resources, PVC, node selector |
+| `ErrImagePull` / `ImagePullBackOff` | kubelet can't fetch the image | image name/tag, registry auth |
+| `CrashLoopBackOff` | the process keeps exiting | `kubectl logs --previous` |
+| `Running` + `0/1` | alive but failing readiness | readiness probe + app logs |
+| `Running` + `1/1`, still no response | traffic never reaches the pod | Service selector, `targetPort`, EndpointSlices |
+
+**Gotchas I hit**
+- Building lab 3 showed a real weakness: with a bad DB password the app *crashed at startup*
+  (`create_all` raised), giving a CrashLoopBackOff instead of the intended "not Ready". I changed the app so
+  it starts, logs the driver's message and lets `/ready` answer 503 – the behaviour you want in production.
+- The first version of `/ready` only logged the exception class, so `kubectl logs` showed nothing useful.
+  Now it logs `password authentication failed for user "foundit"`.
+- `kubectl run … --rm -i` is noisy and sometimes loses output ("falling back to streaming logs"); a
+  long-running `toolbox` pod plus `kubectl exec` is cleaner.
+- `kubectl set env --from=secret/… --prefix=DB_` *replaces* `DB_PASSWORD` where it was, so
+  `$(DB_PASSWORD)` in the next variable still expands (order matters for `$(VAR)`).
+
+**Viva answers**
+- *A Service returns nothing but all pods are Running – first check?* EndpointSlices. Empty = selector
+  doesn't match the pod labels (or no pod is Ready).
+- *Why wasn't the broken-readiness pod restarted?* Liveness (`/health`) passed; only readiness failed.
+  Kubernetes restarts on liveness failures and removes from Services on readiness failures.
+- *Where do you look for ImagePullBackOff?* `kubectl describe pod` Events – the exact image reference and
+  the registry's error are there.

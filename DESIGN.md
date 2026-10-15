@@ -141,6 +141,8 @@ One table, `items`.
 | D6 | Resolve is a separate `POST …/resolve` that returns 409 if already returned | it is an *action*, not a field edit; it sets `resolved_at` and counts exactly once |
 | D7 | `/metrics`, `/health`, `/ready` are excluded from the HTTP metrics | probe and scrape traffic would otherwise dominate requests/s and hide real usage |
 | D8 | `foundit_items_open` gauge is recomputed from the DB after every change | a gauge must be correct after a pod restart; counters only need to go up |
+| D10 | Migration 0002 adds `resolved_at` as a **nullable** column with no default | adding a nullable column is metadata-only in Postgres: no table rewrite, no lock, safe on a live table |
+| D11 | The model declares the same index as migration 0001, and CI runs `alembic check` | models and migrations cannot silently drift apart |
 | D9 | `APP_VERSION` comes from an env var and is shown by `GET /` | the live demo needs a visible change that does not require a code edit in the backend |
 
 ## 8. Phase status
@@ -149,7 +151,7 @@ One table, `items`.
 |---|---|---|---|
 | 1 | Scaffold, DESIGN.md, LEARNING.md | ✅ done | this file |
 | 2 | Backend | ✅ done | [API calls](docs/screenshots/02_backend_api.png), [Swagger](docs/screenshots/03_swagger.png) |
-| 3 | Alembic migrations | ⏳ | |
+| 3 | Alembic migrations | ✅ done | [up/down/up + check](docs/screenshots/04_migrations.png) |
 | 4 | Tests | ⏳ | |
 | 5 | Frontend | ⏳ | |
 | 6 | Docker + Compose | ⏳ | |

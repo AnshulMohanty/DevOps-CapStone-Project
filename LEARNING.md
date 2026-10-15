@@ -104,3 +104,52 @@ curl localhost:8000/api/items/stats        # Swagger UI at http://localhost:8000
 - *Why custom metrics?* HTTP metrics say the service is busy; business metrics say *what* it is busy
   with (how many items are lost vs found, how many get returned).
 - *Why pydantic `Literal`s?* Validation at the edge: bad input is rejected with 422 before it reaches the DB.
+
+---
+
+## Phase 3 – Database migrations (Alembic)
+
+**In one line:** the database schema is versioned like code – every change is a numbered, reversible
+script that runs automatically before the app starts.
+
+**What I built**
+- `0001_create_items` – the table plus an index on `(type, status)`.
+- `0002_add_resolved_at` – a nullable column added later, to show a schema evolving.
+- `alembic/env.py` reads `DATABASE_URL` from the same settings as the app, so there is one source of truth.
+
+```bash
+alembic history            # the chain: <base> -> 0001 -> 0002 (head)
+alembic upgrade head       # apply everything not yet applied
+alembic current            # which revision this database is at (stored in table alembic_version)
+alembic downgrade base     # undo everything - proves each downgrade() works
+alembic check              # fail if the models contain changes no migration covers
+```
+
+**Concepts**
+
+```mermaid
+flowchart LR
+    B["base<br/>(empty DB)"] -->|"0001 upgrade"| R1["items table"]
+    R1 -->|"0002 upgrade"| R2["items + resolved_at"]
+    R2 -->|"0002 downgrade"| R1
+    R1 -->|"0001 downgrade"| B
+```
+
+| Approach | Good for | Problem |
+|---|---|---|
+| `Base.metadata.create_all()` | tests, a brand-new DB | never alters an existing table |
+| Alembic migrations | every real environment | needs discipline: one script per change |
+
+**Gotchas**
+- `pg_isready` can say "ready" while the Postgres image is still running its init scripts and about to
+  restart – wait a few seconds more (or use a compose healthcheck with retries).
+- Adding a `NOT NULL` column without a default to a table that already has rows fails; nullable (or with a
+  server default) is the safe way.
+- If the model and the migrations disagree (e.g. an index only in the model), `alembic check` catches it.
+
+**Viva answers**
+- *Why not just `create_all`?* It only creates missing tables. It can never add a column to a table that
+  already holds production data – migrations can, and can be rolled back.
+- *Where do migrations run?* In the container command, `alembic upgrade head && uvicorn …`, so every new
+  version brings its schema with it. In CI, a job runs upgrade → downgrade → upgrade on a real Postgres.
+- *How does Alembic know what is applied?* The `alembic_version` table stores the current revision id.

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -12,6 +12,7 @@ def utcnow() -> datetime:
 
 class Item(Base):
     __tablename__ = "items"
+    __table_args__ = (Index("ix_items_type_status", "type", "status"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String(120), nullable=False)

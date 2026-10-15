@@ -14,6 +14,25 @@ def test_ready_checks_the_database(client):
     assert response.json() == {"status": "READY"}
 
 
+def test_ready_returns_503_when_the_database_fails(client):
+    from sqlalchemy.exc import OperationalError
+
+    from app.db import get_db
+    from app.main import app
+
+    class BrokenSession:
+        def execute(self, *args, **kwargs):
+            raise OperationalError("SELECT 1", {}, Exception("password authentication failed"))
+
+    app.dependency_overrides[get_db] = lambda: BrokenSession()
+    try:
+        response = client.get("/ready")
+        assert response.status_code == 503
+        assert client.get("/health").status_code == 200  # liveness stays green: no restart loop
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_metrics_endpoint_is_prometheus_format(client):
     client.get("/api/items")
     response = client.get("/metrics")

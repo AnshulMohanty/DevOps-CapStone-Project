@@ -30,12 +30,14 @@ def refresh_open_gauge(db: Session) -> None:
 async def lifespan(app: FastAPI):
     # Production containers run Alembic before Uvicorn; create_all keeps tests self-contained
     # and is a no-op once the migrations have created the table.
-    Base.metadata.create_all(bind=engine)
+    # A database outage must not stop the process: it starts, /health says UP (no restart loop)
+    # and /ready returns 503 until the database is reachable, so Kubernetes simply holds traffic back.
     try:
+        Base.metadata.create_all(bind=engine)
         with SessionLocal() as db:
             refresh_open_gauge(db)
-    except SQLAlchemyError:
-        log.warning("could not prime the open-items gauge; it fills on the first change")
+    except SQLAlchemyError as exc:
+        log.warning("database not reachable at startup, /ready will report 503 until it is: %s", exc.__class__.__name__)
     yield
 
 

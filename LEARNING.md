@@ -246,3 +246,60 @@ flowchart LR
   is environment config, not app code.
 - *Where is the frontend's "server"?* There is none at runtime – after `npm run build` it is static
   files; nginx serves them and proxies `/api`.
+
+---
+
+## Phase 6 – Containers (Docker + Compose) and the first security scan
+
+**In one line:** package each part into an image that runs the same everywhere, prove the three parts work
+together on one machine, and check the images for known vulnerabilities before anything is shipped.
+
+**What I built**
+- `backend/Dockerfile` – `python:3.12-slim`, deps layer first, non-root uid 10001, Python-based
+  `HEALTHCHECK`, `alembic upgrade head && exec uvicorn`.
+- `frontend/Dockerfile` – stage 1 `node:22-alpine` runs `npm ci && npm run build`; stage 2
+  `nginx-unprivileged` serves `dist/` on 8080.
+- `frontend/default.conf.template` – SPA fallback, long cache for hashed assets, `/api/` proxy to
+  `${BACKEND_URL}` (filled in by envsubst at start), `/healthz` for the pod's own probes.
+- `docker-compose.yml` – postgres (healthcheck) → backend (healthcheck) → frontend.
+
+```bash
+docker compose up -d --build
+docker compose ps                                   # (healthy) next to postgres and backend
+docker compose exec postgres psql -U foundit -d foundit -c "select * from items;"
+docker compose exec backend id                      # uid=10001(appuser)
+trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 foundit-backend:local
+docker compose down                                 # add -v to also delete the database volume
+```
+
+**Concepts**
+
+| Dockerfile trick | Why |
+|---|---|
+| `COPY requirements.txt` → `pip install` → *then* `COPY app` | code changes don't re-install dependencies (layer cache) |
+| multi-stage build | build tools stay in stage 1; the final image has only what runs |
+| `USER 10001` | not root inside the container |
+| `exec` in the CMD | the app is PID 1 and receives `SIGTERM` from `docker stop` / Kubernetes |
+| `.dockerignore` | `.venv`, `node_modules`, tests, `.env` never enter the build context |
+
+| Trivy flag | Effect |
+|---|---|
+| `--severity HIGH,CRITICAL` | ignore LOW/MEDIUM noise |
+| `--ignore-unfixed` | skip CVEs with no fixed version yet – nothing I could do about them |
+| `--exit-code 1` | non-zero exit when something is found → the CI step fails |
+
+**Gotchas**
+- `depends_on` alone waits for *start*, not *ready* – the backend must wait for `service_healthy`.
+- A non-root nginx cannot bind port 80, so the container listens on 8080 and compose maps 3000→8080.
+- `python:slim` has no `curl`; the healthcheck uses `python -c urllib…`.
+- In Git Bash, `MSYS_NO_PATHCONV=1` is needed for `-v //var/run/docker.sock:…`, otherwise the path is
+  rewritten into a Windows path.
+- Proof the gate works: an old `nginx:1.20-alpine` gives 30 fixable HIGH/CRITICAL CVEs and exit code 1.
+
+**Viva answers**
+- *Why is the frontend image 90 MB and the backend 306 MB?* The frontend final stage is nginx + static
+  files; the backend needs a full Python runtime and its packages.
+- *What does `--ignore-unfixed` trade off?* The build can't be blocked by something no one can fix yet;
+  those CVEs still show up in the full report and get picked up when a fix is released.
+- *Why run migrations in the container command and not by hand?* The schema version always matches the
+  code version that is running – no manual step to forget.

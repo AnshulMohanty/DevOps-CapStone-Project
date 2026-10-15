@@ -1,0 +1,37 @@
+# Rendered at container start by the nginx image's entrypoint (envsubst):
+# ${BACKEND_URL} is http://backend:8000 in Docker Compose and the backend Service in Kubernetes.
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Hashed assets never change, so the browser may cache them for a long time.
+  location /assets/ {
+    expires 30d;
+    add_header Cache-Control "public, immutable";
+  }
+
+  # Single-page app: unknown paths fall back to index.html.
+  location / {
+    try_files $uri /index.html;
+    add_header Cache-Control "no-cache";
+  }
+
+  # In compose there is no Ingress, so nginx forwards the API itself.
+  location /api/ {
+    proxy_pass ${BACKEND_URL};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  # Liveness/readiness for the frontend pod itself - no backend involved.
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+}

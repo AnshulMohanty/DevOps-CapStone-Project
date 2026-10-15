@@ -149,6 +149,11 @@ One table, `items`.
 | D14 | The browser only calls relative `/api/...` URLs | the same build works under Vite's dev proxy, nginx in compose and the Ingress in Kubernetes – no API URL is baked into the bundle |
 | D15 | Filtering and search happen on the server (query params), with a 250 ms debounce on search | it exercises the API filters and stays correct as the list grows |
 | D16 | UI version comes from `package.json` via Vite `define` and is shown in the footer | bumping it is a one-line, visible change for the live GitOps demo |
+| D17 | Both images run as non-root (backend uid 10001, frontend nginx-unprivileged uid 101 on :8080) | least privilege; also required by clusters that enforce `runAsNonRoot` |
+| D18 | Frontend is multi-stage: Node builds, only `dist/` is copied into nginx | 90 MB image with no Node/npm/source inside – less to patch, less for Trivy to flag |
+| D19 | Backend CMD is `alembic upgrade head && exec uvicorn …` | every new image brings its schema; `exec` makes uvicorn PID 1 so it receives SIGTERM and shuts down cleanly |
+| D20 | Compose waits on healthchecks (`service_healthy`), not just container start | Alembic would crash if Postgres were still initialising |
+| D21 | Trivy gate = `HIGH,CRITICAL` + `--ignore-unfixed` + `--exit-code 1` | fail on serious issues I can actually fix by rebuilding; unfixed CVEs would block every build without any action possible |
 
 ## 8. Phase status
 
@@ -159,7 +164,7 @@ One table, `items`.
 | 3 | Alembic migrations | ✅ done | [up/down/up + check](docs/screenshots/04_migrations.png) |
 | 4 | Tests | ✅ done – 22 passing | [pytest -v](docs/screenshots/05_pytest.png) |
 | 5 | Frontend | ✅ done | [board](docs/screenshots/06_ui_board.png), [report modal](docs/screenshots/07_ui_report_modal.png), [API down](docs/screenshots/08_ui_backend_down.png) |
-| 6 | Docker + Compose | ⏳ | |
+| 6 | Docker + Compose | ✅ done | [compose up + psql + non-root](docs/screenshots/09_compose_up.png), [UI on :3000](docs/screenshots/10_ui_compose.png), [Trivy](docs/screenshots/11_trivy_local.png) |
 | 7 | CI/CD workflow | ⏳ | |
 | 8 | Helm + minikube | ⏳ | |
 | 9 | Monitoring + HPA | ⏳ | |

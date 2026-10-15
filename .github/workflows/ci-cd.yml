@@ -163,6 +163,8 @@ jobs:
         with:
           scan-type: config
           scan-ref: .
+          skip-dirs: troubleshooting   # the labs are broken on purpose
+          trivyignores: .trivyignore   # accepted risks, each with a written reason
           severity: HIGH,CRITICAL
           exit-code: "0"
           skip-setup-trivy: true

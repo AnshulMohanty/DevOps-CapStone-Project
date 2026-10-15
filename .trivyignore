@@ -1,0 +1,11 @@
+# Trivy findings reviewed and accepted. Each entry needs a reason.
+
+# AWS-0104 - EKS node security group allows all egress.
+# The private nodes must reach GHCR (image pulls) and AWS APIs through the NAT gateway;
+# the module's default egress rule is what makes that work. Ingress stays restricted.
+AWS-0104
+
+# AWS-0040 - EKS API endpoint is public.
+# kubectl runs from my laptop for the short demo window, so the endpoint must be reachable.
+# It is NOT open to everyone: api_allowed_cidrs has no default and rejects 0.0.0.0/0 (terraform/variables.tf).
+AWS-0040

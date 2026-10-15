@@ -15,4 +15,6 @@ LABEL org.opencontainers.image.title="foundit-frontend" \
 ENV BACKEND_URL=http://backend:8000
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY default.conf.template /etc/nginx/templates/default.conf.template
+# The base image already runs as uid 101; stating it makes the non-root intent explicit and checkable.
+USER 101
 EXPOSE 8080

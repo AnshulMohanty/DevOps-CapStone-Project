@@ -57,6 +57,14 @@ spec:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           securityContext:
             {{- include "foundit.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
+          # nginx writes its pid/temp files to /tmp, and the entrypoint renders the template into conf.d
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: nginx-conf, mountPath: /etc/nginx/conf.d}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: nginx-conf, emptyDir: {}}
 ---
 apiVersion: v1
 kind: Service

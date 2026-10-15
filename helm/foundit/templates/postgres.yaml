@@ -47,7 +47,12 @@ spec:
         {{- include "foundit.selectorLabels" $component | nindent 8 }}
     spec:
       securityContext:
-        fsGroup: 70            # the postgres user in the alpine image; lets it write to a fresh volume
+        # uid/gid 70 = the postgres user in the alpine image. Running as it from the start (instead of
+        # root + gosu) lets the root filesystem be read-only; fsGroup makes a fresh volume writable.
+        runAsUser: 70
+        runAsGroup: 70
+        runAsNonRoot: true
+        fsGroup: 70
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: postgres
@@ -73,9 +78,16 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.postgres.resources | nindent 12 }}
+          securityContext:
+            {{- include "foundit.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
           volumeMounts:
             - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: run, mountPath: /var/run/postgresql}   # unix socket + lock file
+            - {name: tmp, mountPath: /tmp}
       volumes:
+        - {name: run, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
         - name: data
           {{- if .Values.postgres.persistence.enabled }}
           persistentVolumeClaim:

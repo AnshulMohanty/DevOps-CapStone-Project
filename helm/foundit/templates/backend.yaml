@@ -51,6 +51,7 @@ spec:
           command: ["sh", "-c", "until pg_isready -h {{ include "foundit.postgres" . }} -p 5432 -U {{ .Values.postgres.username }}; do echo waiting for postgres; sleep 2; done"]
           securityContext:
             {{- include "foundit.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
           resources:
             requests: {cpu: 10m, memory: 16Mi}
             limits: {cpu: 100m, memory: 64Mi}

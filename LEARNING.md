@@ -48,3 +48,59 @@ flowchart LR
   of everything, which is what GitOps needs.
 - *Why ignore `*.tfvars`?* They hold my real values (region, sizes, maybe credentials); the `.example` file
   documents the shape without the values.
+
+---
+
+## Phase 2 – Backend (FastAPI)
+
+**In one line:** the thing being deployed – a small REST API that also tells Kubernetes whether it is
+alive, whether it is ready, and how it is doing (metrics).
+
+**What I built**
+- `app/config.py` – settings from env vars (`DATABASE_URL`, `APP_VERSION`) via pydantic-settings.
+- `app/db.py` – SQLAlchemy engine + a session per request (`get_db` dependency).
+- `app/models.py` – the `Item` table. `app/schemas.py` – request/response shapes with `Literal` enums.
+- `app/main.py` – CRUD, filters (`type`, `status`, `category`, `q`), `POST /resolve`, `/stats`.
+- `app/metrics.py` – `foundit_items_reported_total{type}`, `foundit_items_resolved_total`,
+  `foundit_items_open{type}`.
+
+```bash
+py -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.txt
+DATABASE_URL=sqlite:///./dev.db .venv/Scripts/python -m uvicorn app.main:app --port 8000
+curl localhost:8000/api/items/stats        # Swagger UI at http://localhost:8000/docs
+```
+
+**Concepts**
+
+| Endpoint | Probe / user | If it fails |
+|---|---|---|
+| `/health` | liveness probe | kubelet **restarts** the container |
+| `/ready` | readiness probe | pod is **removed from the Service** endpoints, not restarted |
+| `/metrics` | Prometheus scrape | dashboards go blank, the target shows DOWN |
+
+| Metric type | Goes | Example here |
+|---|---|---|
+| Counter | only up (resets on restart; `rate()` handles that) | `foundit_items_reported_total` |
+| Gauge | up and down | `foundit_items_open` |
+| Histogram | buckets of values → percentiles | `http_request_duration_seconds` (from the instrumentator) |
+
+| Status code | Meaning in this API |
+|---|---|
+| 201 | item created |
+| 204 | item deleted, no body |
+| 404 | no item with that id |
+| 409 | resolve on an item that is already returned |
+| 422 | validation failed (empty title, `type: STOLEN`…) |
+| 503 | `/ready`: database unreachable |
+
+**Gotchas**
+- Route order matters: `/api/items/stats` must come *before* `/api/items/{item_id}`.
+- A liveness probe must not check the database – if Postgres blips, every pod would be restarted at once.
+- Leaving probe and scrape paths in the HTTP metrics makes "requests/s" mostly kubelet and Prometheus.
+
+**Viva answers**
+- *Liveness vs readiness?* Liveness = "should I be restarted?"; readiness = "should I get traffic?". A DB
+  outage is a readiness problem, not a liveness one.
+- *Why custom metrics?* HTTP metrics say the service is busy; business metrics say *what* it is busy
+  with (how many items are lost vs found, how many get returned).
+- *Why pydantic `Literal`s?* Validation at the edge: bad input is rejected with 422 before it reaches the DB.

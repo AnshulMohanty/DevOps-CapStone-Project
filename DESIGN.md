@@ -135,13 +135,20 @@ One table, `items`.
 |---|---|---|
 | D1 | Build in this repo, reuse my fixed topic-20 code, not the teacher's raw files | the teacher's Terraform does not parse and the demo had bugs I had already fixed |
 | D2 | All manual work (GitHub push, GHCR visibility, AWS) is the last phase | everything that costs money or is public happens once, in one short window |
+| D3 | Enums as pydantic `Literal`s, stored as plain strings | invalid values are rejected with 422 before any DB call, and the DB stays portable (SQLite in tests, Postgres in prod) |
+| D4 | `/ready` runs a real query and returns 503 on failure; `/health` never touches the DB | a DB outage takes pods *out of the Service* (readiness) instead of restarting them in a loop (liveness) |
+| D5 | `/api/items/stats` is declared before `/api/items/{item_id}` | FastAPI matches routes in order; otherwise `stats` would be parsed as an id and return 422 |
+| D6 | Resolve is a separate `POST …/resolve` that returns 409 if already returned | it is an *action*, not a field edit; it sets `resolved_at` and counts exactly once |
+| D7 | `/metrics`, `/health`, `/ready` are excluded from the HTTP metrics | probe and scrape traffic would otherwise dominate requests/s and hide real usage |
+| D8 | `foundit_items_open` gauge is recomputed from the DB after every change | a gauge must be correct after a pod restart; counters only need to go up |
+| D9 | `APP_VERSION` comes from an env var and is shown by `GET /` | the live demo needs a visible change that does not require a code edit in the backend |
 
 ## 8. Phase status
 
 | Phase | What | Status | Evidence |
 |---|---|---|---|
 | 1 | Scaffold, DESIGN.md, LEARNING.md | ✅ done | this file |
-| 2 | Backend | ⏳ | |
+| 2 | Backend | ✅ done | [API calls](docs/screenshots/02_backend_api.png), [Swagger](docs/screenshots/03_swagger.png) |
 | 3 | Alembic migrations | ⏳ | |
 | 4 | Tests | ⏳ | |
 | 5 | Frontend | ⏳ | |

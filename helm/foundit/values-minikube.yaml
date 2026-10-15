@@ -6,4 +6,4 @@ backend:
     requests: {cpu: 100m, memory: 96Mi}
     limits: {cpu: 300m, memory: 192Mi}
 hpa:
-  maxReplicas: 4            # the node cannot fit more next to the monitoring stack
+  maxReplicas: 3            # the ~2.7 GiB node also runs monitoring and Argo CD; 4 pods + load starved it

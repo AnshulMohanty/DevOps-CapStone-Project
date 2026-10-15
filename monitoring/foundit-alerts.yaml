@@ -1,0 +1,50 @@
+# Alert rules for FoundIt, evaluated by Prometheus (visible under Alerts and Status -> Rule health).
+#   kubectl apply -f monitoring/foundit-alerts.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: foundit-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: foundit
+spec:
+  groups:
+    - name: foundit.rules
+      rules:
+        - alert: FoundItBackendDown
+          # absent() also fires if the target disappears completely (e.g. ServiceMonitor deleted).
+          expr: sum(up{job="foundit-backend"}) == 0 or absent(up{job="foundit-backend"})
+          for: 1m
+          labels: {severity: critical}
+          annotations:
+            summary: No FoundIt backend pod is being scraped successfully
+            description: Prometheus cannot reach any foundit-backend pod on /metrics for 1 minute.
+
+        - alert: FoundItHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="foundit-backend",status="5xx"}[5m]))
+              / clamp_min(sum(rate(http_requests_total{job="foundit-backend"}[5m])), 1e-9) > 0.05
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: More than 5% of FoundIt API requests fail with 5xx
+            description: "5xx ratio is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+        - alert: FoundItSlowRequests
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(http_request_duration_highr_seconds_bucket{job="foundit-backend"}[5m]))) > 1
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: FoundIt p95 latency is above 1 second
+            description: "p95 latency is {{ $value | humanizeDuration }}."
+
+        - alert: FoundItHPAAtMaximum
+          # Scaling has run out of room: more load now means slower responses, not more pods.
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace="foundit"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="foundit"}
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: The FoundIt backend HPA has been at its maximum for 10 minutes

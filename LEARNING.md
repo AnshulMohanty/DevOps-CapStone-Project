@@ -421,3 +421,76 @@ flowchart LR
   otherwise reset it to 2 on every sync.
 - *What happens to the data on `helm uninstall`?* The PVC has `helm.sh/resource-policy: keep`, so the
   database volume survives; it is deleted only on purpose.
+
+---
+
+## Phase 9 – Monitoring (Prometheus + Grafana) and autoscaling (HPA)
+
+**In one line:** Prometheus pulls numbers from every backend pod, Grafana draws them, alert rules decide
+when a human should look, and the HPA uses CPU numbers to add or remove backend pods by itself.
+
+**What I built**
+- `monitoring/prometheus-values.yaml` – a slimmed kube-prometheus-stack (see the gotchas – this took three tries).
+- `helm/foundit/templates/servicemonitor.yaml` – tells Prometheus to scrape `foundit-backend:http/metrics`.
+- `monitoring/foundit-dashboard.yaml` – 18 panels: targets UP, req/s, p95, 5xx ratio, HPA replicas,
+  CPU vs request; and the business row: still lost, found-waiting, reported/returned per hour.
+- `monitoring/foundit-alerts.yaml` – `PrometheusRule` with 4 alerts.
+- `scripts/load-test.sh` – in-cluster load: mostly list queries, plus creates and resolves.
+
+```bash
+kubectl create namespace monitoring && kubectl apply -f monitoring/foundit-dashboard.yaml
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring -f monitoring/prometheus-values.yaml
+kubectl apply -f monitoring/foundit-alerts.yaml
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090   # Status → Target health
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80    # admin / foundit-admin
+kubectl run load -n foundit --rm -i --restart=Never --image=curlimages/curl:8.11.1 --command -- sh -c "$(cat scripts/load-test.sh)"
+kubectl get hpa -n foundit -w
+```
+
+**Concepts**
+
+```mermaid
+flowchart LR
+    SM["ServiceMonitor<br/>(label selector)"] -.->|"operator writes scrape config"| P["Prometheus"]
+    P -->|"GET /metrics every 15 s"| B["backend pods"]
+    P --> R["PrometheusRule<br/>alerts"]
+    P --> G["Grafana panels<br/>(PromQL)"]
+    MS["metrics-server"] -->|"CPU per pod"| H["HPA"] -->|"scale"| D["backend Deployment"]
+```
+
+| PromQL used | Reads as |
+|---|---|
+| `sum(up{job="foundit-backend"})` | how many backend pods Prometheus can scrape |
+| `sum(rate(http_requests_total[1m]))` | requests per second, averaged over 1 minute |
+| `histogram_quantile(0.95, sum by (le) (rate(..._bucket[2m])))` | 95% of requests were faster than this |
+| `max(foundit_items_open{type="LOST"})` | open lost items (a gauge – `max` because every pod reports it) |
+| `sum(increase(foundit_items_reported_total[1h]))` | reports in the last hour, summed over pods |
+
+| HPA maths | |
+|---|---|
+| target | 60% of the CPU **request** (100m → 60m per pod) |
+| desired replicas | `ceil(current × currentUtil / target)` = `ceil(2 × 246 / 60)` = 9 → capped at max 3 |
+| scale-down | only after 120 s below target (stabilization window) |
+
+**Gotchas I hit (the expensive lesson of this project)**
+1. **First load test: the whole node fell over.** 9000 requests with 8 clients → HPA went 2→4 (good), but
+   the minikube container reached **92% of 2.73 GiB**, probes timed out *everywhere* (API server, CoreDNS,
+   ingress, Postgres), metrics-server crash-looped and the HPA went blind (`cpu: <unknown>`).
+2. **Why the kubelet didn't save us:** the node *reports* the Docker VM's 3.6 GiB, but the container is
+   capped at 2.73 GiB. Kubernetes thinks there is plenty of memory, so it never evicts – the kernel just
+   thrashes. Lesson: on a constrained node, size requests/limits for the *real* limit.
+3. **Fixes:** kube-apiserver was the biggest process (~600 MB); its own metrics are the highest-cardinality
+   series, so scraping them is switched off. Default rules/dashboards off, HPA max 3, lighter load test.
+4. **Grafana 13 was OOMKilled twice** (256Mi, then 384Mi). 512Mi + `GOMEMLIMIT` fixed it.
+5. **Grafana's sidecars** (2 Python containers) watched every ConfigMap in the cluster – replaced with
+   file provisioning. Side effect: the dashboard ConfigMap must exist *before* Grafana starts.
+6. Proof it is stable now: the second load test (6 clients) scaled 2→3 and back to 2 with no restarts.
+
+**Viva answers**
+- *Why can't the HPA scale on memory here?* It could, but Python's memory doesn't drop when load drops, so
+  it would scale up and never down. CPU follows load.
+- *What does the HPA need to work?* metrics-server, and CPU **requests** on the container (utilisation is a
+  percentage of the request).
+- *Pull vs push metrics?* Prometheus pulls; a target that stops answering shows as DOWN, which is itself an alert.
+- *Why a ServiceMonitor instead of editing prometheus.yml?* It is a Kubernetes object that ships with the
+  app's chart; the operator turns it into scrape config, so the app owns its own monitoring.

@@ -170,6 +170,13 @@ One table, `items`.
 | D35 | Postgres as a single-replica Deployment with a `Recreate` strategy, PVC kept on uninstall (`helm.sh/resource-policy: keep`) | an RWO volume can only be mounted by one pod; deleting the release must not delete the data. Production would use RDS. |
 | D36 | Ingress with an optional host (`foundit.local` on minikube, none on EKS) | the EKS load balancer has a generated hostname that is not known in advance |
 | D37 | Init container `wait-for-postgres` runs `pg_isready -U <user>` | avoids a CrashLoopBackOff race on first install; `-U` is needed because uid 10001 has no user name |
+| D38 | kube-prometheus-stack with Alertmanager, default rules/dashboards, API-server and CoreDNS scraping off; Grafana without sidecars | the stock install pushed the 2.7 GiB node to 92% memory and probes failed cluster-wide; these parts cost the most and the project doesn't use them |
+| D39 | The node's real limit is the minikube container (2.73 GiB), but it reports the Docker VM's 3.6 GiB | the kubelet never sees memory pressure, so it never evicts – it just thrashes. Requests/limits must be sized by hand for the real 2.7 GiB |
+| D40 | Grafana `GOMEMLIMIT=420MiB` under a 512Mi limit | the Go GC works harder near the limit instead of being OOMKilled (it was OOMKilled at 256Mi and 384Mi) |
+| D41 | Dashboard + datasource provisioned from files (`dashboardsConfigMaps`), dashboard JSON generated from a script | dashboards are code, reviewed in git; no sidecar watching every ConfigMap |
+| D42 | Alert rules as a `PrometheusRule`: backend down, 5xx > 5%, p95 > 1 s, HPA at max | each one answers "should a human look now?"; the HPA-at-max rule says scaling has run out of room |
+| D43 | Load test runs inside the cluster, light (6 clients) | no port-forward bottleneck; a heavier test starved the single node |
+| D44 | HPA max 3 on minikube, scale-down stabilization 120 s | the node fits 3 backends next to monitoring; 120 s (default 300 s) shows the full up-and-down cycle in a demo |
 
 ## 8. Phase status
 
@@ -183,7 +190,7 @@ One table, `items`.
 | 6 | Docker + Compose | ✅ done | [compose up + psql + non-root](docs/screenshots/09_compose_up.png), [UI on :3000](docs/screenshots/10_ui_compose.png), [Trivy](docs/screenshots/11_trivy_local.png) |
 | 7 | CI/CD workflow | ✅ written + actionlint clean (first real run in Phase 12A) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) |
 | 8 | Helm + minikube | ✅ done | [helm + kubectl](docs/screenshots/13_helm_minikube.png), [UI via Ingress](docs/screenshots/14_ui_ingress.png) |
-| 9 | Monitoring + HPA | ⏳ | |
+| 9 | Monitoring + HPA | ✅ done | [targets UP](docs/screenshots/15_prometheus_targets.png), [alert rules](docs/screenshots/16_prometheus_alerts.png), [Grafana](docs/screenshots/17_grafana_dashboard.png), [HPA 2→3→2](docs/screenshots/18_hpa_scaling.png) |
 | 10 | Troubleshooting labs | ⏳ | |
 | 11 | Terraform + Argo CD + README | ⏳ | |
 | 12 | Guided manual phase: push, GHCR, GitOps demo, AWS | ⏳ | |

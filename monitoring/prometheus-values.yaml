@@ -1,0 +1,93 @@
+# kube-prometheus-stack, trimmed to fit a single ~3.7 GiB minikube node next to the app and Argo CD.
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     -n monitoring --create-namespace -f monitoring/prometheus-values.yaml --wait
+
+# Alerts are evaluated by Prometheus and visible on its Alerts page; routing them to
+# e-mail/Slack would need Alertmanager, which is switched off to save memory.
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: false   # they depend on the default recording rules switched off below
+  adminPassword: foundit-admin       # local demo only
+  # No sidecars: the two default ones (dashboards + datasources) cost ~120Mi and keep a cluster-wide
+  # watch on every ConfigMap open on the API server. The datasource and the dashboard are provisioned
+  # from files instead. monitoring/foundit-dashboard.yaml must be applied BEFORE this chart is installed,
+  # because Grafana mounts that ConfigMap as a volume.
+  sidecar:
+    dashboards: {enabled: false}
+    datasources: {enabled: false}
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          url: http://kube-prometheus-stack-prometheus.monitoring:9090
+          access: proxy
+          isDefault: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: foundit
+          folder: FoundIt
+          type: file
+          options: {path: /var/lib/grafana/dashboards/foundit}
+  dashboardsConfigMaps:
+    foundit: foundit-dashboard     # mounted at /var/lib/grafana/dashboards/foundit
+  resources:
+    requests: {cpu: 50m, memory: 192Mi}
+    # Grafana 13 was OOMKilled at 256Mi (first-start migrations) and at 384Mi (rendering the dashboard).
+    limits: {memory: 512Mi}
+  env:
+    # Make Go's garbage collector work harder as it nears the limit instead of being OOMKilled.
+    GOMEMLIMIT: 420MiB
+
+prometheus:
+  prometheusSpec:
+    # Pick up ServiceMonitors and PrometheusRules from every namespace,
+    # not only the ones carrying this release's label.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelector: {}
+    retention: 1d
+    scrapeInterval: 15s
+    resources:
+      requests: {cpu: 100m, memory: 192Mi}
+      limits: {memory: 512Mi}
+
+prometheusOperator:
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 128Mi}
+
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 96Mi}
+
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 10m, memory: 16Mi}
+    limits: {memory: 48Mi}
+
+# Slimmed for minikube (see LEARNING.md, Phase 9): the stock install pushed the single node to 92% memory
+# under load and probes started timing out cluster-wide. These are the expensive parts we don't use:
+defaultRules:
+  create: false          # ~200 recording/alerting rules for cluster internals; FoundIt ships its own rules
+kubeApiServer:
+  enabled: false         # the API server's metrics are the highest-cardinality series in the cluster
+coreDns:
+  enabled: false
+
+# minikube only: these control-plane components listen on 127.0.0.1 inside the node,
+# so Prometheus cannot reach them and they would show as DOWN targets.
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}

@@ -1,0 +1,279 @@
+# FoundIt CI/CD
+#
+#   test              pytest + frontend build + helm lint/template
+#   migrations        alembic upgrade -> downgrade -> upgrade -> check, on a real PostgreSQL service container
+#   build-scan-push   2 images tagged with the commit SHA -> Trivy gate (fixable HIGH/CRITICAL fails) -> GHCR
+#   smoke-deploy      helm upgrade --install of those exact images on a throwaway kind cluster + curl smoke test
+#   gitops-bump       writes the SHA into helm/foundit/values-image.yaml and commits it; Argo CD deploys it
+#
+# Images are pushed, deployed and bumped only for pushes to main. Pull requests stop after the scan.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per branch at a time, so two bump commits can never race each other.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Docker rejects upper-case image names and the owner is "AnshulMohanty", so the prefix is fixed in lower case.
+  IMAGE_PREFIX: ghcr.io/anshulmohanty/foundit
+  IS_MAIN_PUSH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ------------------------------------------------------------------ TEST
+  test:
+    name: Test backend, build frontend, lint chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Run backend tests
+        working-directory: backend
+        run: pytest -v
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          ls -la dist dist/assets
+
+      - name: Lint and render the Helm chart for every environment
+        run: |
+          for env in minikube eks; do
+            helm lint helm/foundit -f helm/foundit/values-$env.yaml -f helm/foundit/values-image.yaml
+            helm template foundit helm/foundit -n foundit -f helm/foundit/values-$env.yaml -f helm/foundit/values-image.yaml > /dev/null
+          done
+
+  # ------------------------------------------------------------------ MIGRATIONS
+  migrations:
+    name: Migrations on real PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: foundit
+          POSTGRES_USER: foundit
+          POSTGRES_PASSWORD: foundit
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U foundit -d foundit"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://foundit:foundit@localhost:5432/foundit
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      - name: upgrade -> downgrade -> upgrade -> check
+        run: |
+          alembic upgrade head
+          alembic current
+          alembic downgrade base
+          alembic upgrade head
+          alembic check
+          psql "postgresql://foundit:foundit@localhost:5432/foundit" -c '\d items'
+
+  # ------------------------------------------------------------------ BUILD + SCAN + PUSH
+  build-scan-push:
+    name: Build, scan and push images
+    needs: [test, migrations]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build images (tag = commit SHA)
+        run: |
+          for c in backend frontend; do
+            docker build \
+              --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+              --label org.opencontainers.image.revision=${{ github.sha }} \
+              -t "$IMAGE_PREFIX-$c:$GITHUB_SHA" ./$c
+          done
+          docker images "$IMAGE_PREFIX-*"
+
+      - name: Trivy gate - backend image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Trivy gate - frontend image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          skip-setup-trivy: true
+
+      # Misconfiguration scan of the Helm chart and Terraform: reported, but not blocking.
+      - name: Trivy config scan - helm + terraform (report only)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          skip-setup-trivy: true
+
+      - name: Log in to GHCR
+        if: env.IS_MAIN_PUSH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push images
+        if: env.IS_MAIN_PUSH == 'true'
+        run: |
+          for c in backend frontend; do
+            docker push "$IMAGE_PREFIX-$c:$GITHUB_SHA"
+            echo "- \`$IMAGE_PREFIX-$c:$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  # ------------------------------------------------------------------ SMOKE DEPLOY
+  smoke-deploy:
+    name: Smoke deploy on kind
+    needs: build-scan-push
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a kind cluster on the runner
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: foundit
+
+      - name: Namespace + registry credentials
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl create secret docker-registry ghcr -n foundit \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }}
+
+      - name: helm upgrade --install (the images built by this run)
+        run: |
+          helm upgrade --install foundit ./helm/foundit -n foundit \
+            -f helm/foundit/values-minikube.yaml \
+            --set backend.image.tag="$GITHUB_SHA" \
+            --set frontend.image.tag="$GITHUB_SHA" \
+            --set "imagePullSecrets[0].name=ghcr" \
+            --set ingress.enabled=false \
+            --wait --timeout 5m
+          helm list -n foundit
+          kubectl get pods,svc,hpa -n foundit
+
+      - name: Smoke test through the frontend Service
+        run: |
+          kubectl port-forward -n foundit service/foundit-frontend 8080:80 >/dev/null 2>&1 &
+          sleep 3
+          curl -sf localhost:8080/ | grep -o '<title>.*</title>'
+          curl -sf -X POST localhost:8080/api/items -H 'Content-Type: application/json' \
+            -d '{"title":"Smoke test from CI","type":"FOUND","location":"GitHub runner","reported_by":"CI"}'; echo
+          curl -sf localhost:8080/api/items/stats; echo
+          kubectl get deploy -n foundit -o custom-columns='DEPLOYMENT:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get all -n foundit
+          kubectl describe pods -n foundit | tail -60
+          kubectl logs -n foundit -l app.kubernetes.io/component=backend --tail=50 || true
+
+  # ------------------------------------------------------------------ GITOPS BUMP
+  # Continuous delivery: CI never touches the real cluster. It records *what* should run in git,
+  # and Argo CD (watching this repo) makes the cluster match.
+  gitops-bump:
+    name: Bump image tag for Argo CD
+    needs: smoke-deploy
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Write the new tag into values-image.yaml
+        run: |
+          cat > helm/foundit/values-image.yaml <<EOF
+          # Written by the CI gitops-bump job - do not edit by hand.
+          # Argo CD reads this file, so changing it is what deploys a new version.
+          backend:
+            image:
+              tag: "${GITHUB_SHA}"
+          frontend:
+            image:
+              tag: "${GITHUB_SHA}"
+          EOF
+          cat helm/foundit/values-image.yaml
+
+      # Pushes made with GITHUB_TOKEN never trigger another workflow run, and [skip ci] makes that explicit.
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/foundit/values-image.yaml
+          if git diff --cached --quiet; then echo "Tag already current"; exit 0; fi
+          git commit -m "deploy: foundit ${GITHUB_SHA::7} [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "Bumped to \`${GITHUB_SHA::7}\` - Argo CD will sync it." >> "$GITHUB_STEP_SUMMARY"

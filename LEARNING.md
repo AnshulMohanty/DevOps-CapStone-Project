@@ -303,3 +303,53 @@ docker compose down                                 # add -v to also delete the 
   those CVEs still show up in the full report and get picked up when a fix is released.
 - *Why run migrations in the container command and not by hand?* The schema version always matches the
   code version that is running – no manual step to forget.
+
+---
+
+## Phase 7 – CI/CD pipeline (GitHub Actions)
+
+**In one line:** every push to `main` is tested, built into images named after the commit, scanned, pushed,
+deployed to a throwaway cluster as a smoke test, and finally *recorded in git* for Argo CD to roll out.
+
+**What I built** – `.github/workflows/ci-cd.yml`, five jobs:
+
+```mermaid
+flowchart LR
+    T["test<br/>pytest · npm build · helm lint"] --> B
+    M["migrations<br/>Postgres service container"] --> B
+    B["build-scan-push<br/>:SHA · Trivy gate · GHCR"] --> S["smoke-deploy<br/>kind + helm + curl"]
+    S --> G["gitops-bump<br/>commit values-image.yaml"]
+    G -.->|"Argo CD sees the commit"| K["cluster updated"]
+```
+
+**Concepts**
+
+| Keyword | Meaning |
+|---|---|
+| `on: push / pull_request / workflow_dispatch` | what starts a run (dispatch = the "Run workflow" button) |
+| `needs:` | job order; a failed job stops everything after it |
+| `if:` | job/step runs only when true (here: only pushes to `main` publish) |
+| `services:` | a side container (Postgres) available to the job on `localhost` |
+| `permissions:` | what `GITHUB_TOKEN` may do – `packages: write` to push images, `contents: write` only for the bump |
+| `concurrency:` | at most one run per branch at a time |
+| `$GITHUB_STEP_SUMMARY` | markdown shown on the run's summary page |
+
+| CI vs CD here | Who | Touches the cluster? |
+|---|---|---|
+| CI (test, build, scan, push) | GitHub Actions | no |
+| CD (deploy) | Argo CD, pulling from git | yes – from *inside* the cluster |
+
+**Gotchas**
+- A bump commit pushed by the pipeline must not start the pipeline again (infinite loop). Pushes made
+  with `GITHUB_TOKEN` never trigger workflows, and `[skip ci]` in the message makes the intent explicit.
+- `${{ }}` expressions evaluate to strings in `env:` – compare with `== 'true'`.
+- actionlint runs shellcheck on every `run:` block; it caught unquoted `$GITHUB_SHA`.
+- A heredoc inside a YAML `run: |` works because YAML strips the common indentation, leaving `EOF` at column 0.
+
+**Viva answers**
+- *Why tag with the SHA and not `latest`?* `latest` changes meaning silently; a SHA is immutable, so the
+  cluster, the registry and git all agree on what is running, and a rollback is just the previous SHA.
+- *What stops a vulnerable image from being deployed?* The Trivy steps exit 1 → `build-scan-push` fails →
+  push, smoke deploy and bump never run, so Argo CD never hears about it.
+- *Push vs pull deployment?* CI could `kubectl apply` (push) but would need cluster credentials. With
+  GitOps the cluster pulls desired state from git – fewer secrets, drift is corrected automatically.

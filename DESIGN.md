@@ -154,6 +154,13 @@ One table, `items`.
 | D19 | Backend CMD is `alembic upgrade head && exec uvicorn …` | every new image brings its schema; `exec` makes uvicorn PID 1 so it receives SIGTERM and shuts down cleanly |
 | D20 | Compose waits on healthchecks (`service_healthy`), not just container start | Alembic would crash if Postgres were still initialising |
 | D21 | Trivy gate = `HIGH,CRITICAL` + `--ignore-unfixed` + `--exit-code 1` | fail on serious issues I can actually fix by rebuilding; unfixed CVEs would block every build without any action possible |
+| D22 | Tag = full commit SHA, never `latest` | every running pod can be traced to the exact commit; rollback = previous SHA |
+| D23 | Separate `migrations` job with a Postgres *service container* | unit tests use SQLite; this proves the real migration scripts on the real database engine |
+| D24 | Push/deploy/bump only on `main` pushes; PRs stop after the scan | PRs get full feedback without publishing anything |
+| D25 | `smoke-deploy` installs the chart on a throwaway kind cluster with the images just pushed | proves the chart + images start and answer before anything is promoted |
+| D26 | CD is GitOps: CI commits the new tag to `values-image.yaml`, Argo CD syncs the cluster | CI needs no cluster credentials; git is the audit log of what ran when; rollback = `git revert` |
+| D27 | `concurrency` group per branch | two runs on main can never push competing bump commits |
+| D28 | Trivy `config` scan of the chart and Terraform is report-only | misconfig findings are advice to review; a CVE in a shipped image is a hard stop |
 
 ## 8. Phase status
 
@@ -165,7 +172,7 @@ One table, `items`.
 | 4 | Tests | ✅ done – 22 passing | [pytest -v](docs/screenshots/05_pytest.png) |
 | 5 | Frontend | ✅ done | [board](docs/screenshots/06_ui_board.png), [report modal](docs/screenshots/07_ui_report_modal.png), [API down](docs/screenshots/08_ui_backend_down.png) |
 | 6 | Docker + Compose | ✅ done | [compose up + psql + non-root](docs/screenshots/09_compose_up.png), [UI on :3000](docs/screenshots/10_ui_compose.png), [Trivy](docs/screenshots/11_trivy_local.png) |
-| 7 | CI/CD workflow | ⏳ | |
+| 7 | CI/CD workflow | ✅ written + actionlint clean (first real run in Phase 12A) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) |
 | 8 | Helm + minikube | ⏳ | |
 | 9 | Monitoring + HPA | ⏳ | |
 | 10 | Troubleshooting labs | ⏳ | |

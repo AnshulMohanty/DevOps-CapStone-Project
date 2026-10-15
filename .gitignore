@@ -1,0 +1,31 @@
+# editors / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+
+# node
+node_modules/
+dist/
+
+# secrets and local config - never commit
+.env
+*.pem
+
+# terraform: state holds resource IDs and can hold secrets; tfvars holds your values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan
+crash.log
+
+*.log

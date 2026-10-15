@@ -153,3 +153,47 @@ flowchart LR
 - *Where do migrations run?* In the container command, `alembic upgrade head && uvicorn …`, so every new
   version brings its schema with it. In CI, a job runs upgrade → downgrade → upgrade on a real Postgres.
 - *How does Alembic know what is applied?* The `alembic_version` table stores the current revision id.
+
+---
+
+## Phase 4 – Automated tests (pytest)
+
+**In one line:** the first gate of the pipeline – if any of these 22 tests fails, nothing gets built,
+scanned or deployed.
+
+**What I built**
+- `tests/conftest.py` – sets `DATABASE_URL` to a temp SQLite file *before* importing the app, a
+  session-wide `TestClient` (inside `with`, so the lifespan creates the tables) and a `make_item` factory.
+- `tests/test_health.py` – `/`, `/health`, `/ready`, `/metrics`.
+- `tests/test_items.py` – create, 4 kinds of invalid input (422), list order, each filter, search,
+  get, 404, update, resolved_at consistency, resolve + 409, delete, stats, business metrics.
+
+```bash
+pytest -v                       # locally (venv)
+docker run --rm -v "$PWD:/src:ro" python:3.12-slim sh -c "cp -r /src /app && cd /app && pip install -r requirements-dev.txt && pytest -v"
+```
+
+**Concepts**
+
+| Fixture scope | Created | Used here for |
+|---|---|---|
+| `session` | once per test run | the `TestClient` (and so the DB) |
+| `function` (default) | once per test | `make_item` – fresh data per test |
+
+| Test type | What it proves | Where |
+|---|---|---|
+| unit / API tests | the logic and the HTTP contract | pytest, every push |
+| migration test | the schema scripts work on real Postgres | CI `migrations` job |
+| smoke test | the deployed containers answer | CI `smoke-deploy` job (kind) |
+
+**Gotchas**
+- The env var has to be set before `from app.main import app`, because `app.db` builds the engine at
+  import time – that is why the import sits below `os.environ[...]` in `conftest.py`.
+- `@pytest.mark.parametrize` turned one test into four (one per bad payload) – each shows separately.
+- A shared DB means tests must not assume the table is empty: compare before/after.
+
+**Viva answers**
+- *Why SQLite in tests if production is Postgres?* Speed and zero setup for logic tests. Postgres-specific
+  behaviour (the migrations) is tested separately against a real Postgres service container in CI.
+- *What does a failing test do in the pipeline?* The `test` job fails, and `build-scan-push` `needs` it,
+  so no image is built or pushed – a broken commit never reaches a cluster.

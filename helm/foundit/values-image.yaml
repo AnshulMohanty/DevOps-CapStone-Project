@@ -2,7 +2,7 @@
 # Argo CD reads this file, so changing it is what deploys a new version.
 backend:
   image:
-    tag: "2569aa2595466a6ee8dd32e1cc3e6f1569e731a5"
+    tag: "7208a4c5d979a2ad6faa52017d6e70b695ba3c6b"
 frontend:
   image:
-    tag: "2569aa2595466a6ee8dd32e1cc3e6f1569e731a5"
+    tag: "7208a4c5d979a2ad6faa52017d6e70b695ba3c6b"

@@ -600,3 +600,57 @@ trivy config --ignorefile .trivyignore --skip-dirs troubleshooting .            
   my values; the real file is git-ignored. AWS keys never go in either. They live in `~/.aws`.
 - *Why GitOps on top of CI/CD?* The cluster pulls its desired state from git: CI needs no cluster
   credentials, every deployment is a commit (auditable, revertable), and drift is corrected automatically.
+
+---
+
+## Phase 12A/12B – First push, the real pipeline, and GitOps end to end
+
+**In one line:** the first `git push` ran the whole pipeline green, Argo CD took over the cluster from
+git, and a one-line version bump travelled commit → CI → GHCR → deploy commit → Argo CD → new pods.
+
+**What happened**
+
+| Step | Result |
+|---|---|
+| pre-push checks | gitleaks: no leaks in 15 commits; no `.env`/`.venv`/tfstate tracked; every commit authored by me |
+| push → CI run #1 | 5/5 jobs green on the first run (3 m 48 s) |
+| GHCR | `foundit-backend` / `foundit-frontend` tagged with the full SHA, **public** automatically |
+| hand-over to Argo CD | `helm uninstall` (PVC kept) → `kubectl apply -f argocd/foundit-app.yaml` → Synced/Healthy, data intact |
+| live demo rehearsal | `"version": "1.1.0"` → push → run #2 green → deploy commit `3a09be5` → Argo CD OutOfSync → synced → pods rolled → footer shows v1.1.0 |
+
+```mermaid
+sequenceDiagram
+    participant Me as git push (me)
+    participant GA as GitHub Actions
+    participant R as GHCR
+    participant G as git (main)
+    participant A as Argo CD
+    participant K as cluster
+    Me->>GA: commit 1833515 "FoundIt UI 1.1.0"
+    GA->>GA: test · migrations · build · Trivy · kind smoke
+    GA->>R: push :1833515…
+    GA->>G: commit 3a09be5 "deploy: foundit 1833515 [skip ci]"
+    A->>G: poll (60 s) → OutOfSync
+    A->>K: sync → rolling update (maxUnavailable 0)
+    K-->>Me: footer shows v1.1.0
+```
+
+**Gotchas I hit**
+- Polling the GitHub API without a token hits the **60 requests/hour** limit quickly; poll every 90 s.
+- Run logs **and** job summaries are only shown to signed-in users – a logged-out screenshot of the run
+  shows the job graph but not the Trivy tables.
+- GHCR packages were already public: images pushed from a public repo with the OCI `source` label
+  inherit its visibility. An anonymous `docker pull` (token from `ghcr.io/token`) proves it.
+- Moving from a manual `helm install` to Argo CD: uninstall first so there is one owner. The PVC's
+  `keep` policy meant the database survived and the new Postgres pod reattached to it.
+- **App + Argo CD + monitoring was too much for the 2.73 GiB node** (545% CPU, probes failing in every
+  namespace, Argo CD reported Degraded). Pausing monitoring fixed it; on this laptop the two heavy
+  add-ons take turns.
+
+**Viva answers**
+- *How does a commit reach the cluster?* CI builds and scans an image tagged with the SHA, then commits
+  that tag to `values-image.yaml`; Argo CD sees git change, renders the chart and applies the diff.
+- *Why does the bump commit not trigger another pipeline?* It is pushed with `GITHUB_TOKEN` (never
+  triggers workflows) and carries `[skip ci]`.
+- *How do you roll back?* `git revert` the deploy commit (Argo CD syncs the old tag) – or "History and
+  rollback" in Argo CD for an emergency.

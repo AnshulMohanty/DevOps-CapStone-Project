@@ -187,6 +187,11 @@ One table, `items`.
 | D51 | Pods use read-only root filesystems (backend, frontend, init container, postgres) with `emptyDir` for the paths that must be writable; postgres runs as uid 70 | a compromised process can't modify its own image; found by the Trivy config scan |
 | D52 | `.trivyignore` holds accepted findings, each with a written reason; CI's config scan skips the deliberately broken labs | accepted risk is documented and reviewable instead of silently ignored |
 | D53 | Argo CD installed lean (no Dex, notifications or ApplicationSet), polls every 60 s; Application uses automated sync + prune + selfHeal | fits next to the app and monitoring; the live demo doesn't wait 3 minutes; manual drift is reverted |
+| D54 | The GitOps bump commit is authored by `github.actor` (the developer who pushed), not a bot | the history reads as one developer's work; the commit still says `deploy:` and `[skip ci]` |
+| D55 | Hand-over from the manual Helm release to Argo CD: `helm uninstall`, then apply the Application | one owner per resource; the PVC survived (`resource-policy: keep`) and all 318 items were still there |
+| D56 | GHCR packages needed no visibility change | images pushed from a public repo with the `org.opencontainers.image.source` label inherit its public visibility – verified with an anonymous pull |
+| D57 | On this laptop, monitoring and Argo CD are not run at the same time | app + Argo CD + monitoring pushed the 2.73 GiB node to 545% CPU and cluster-wide probe failures; each fits alone |
+| D58 | Trivy tables are also written to the run summary | the reason for a red build is visible without opening logs (GitHub shows summaries and logs to signed-in users only) |
 
 ## 8. Phase status
 
@@ -203,4 +208,7 @@ One table, `items`.
 | 9 | Monitoring + HPA | ✅ done | [targets UP](docs/screenshots/15_prometheus_targets.png), [alert rules](docs/screenshots/16_prometheus_alerts.png), [Grafana](docs/screenshots/17_grafana_dashboard.png), [HPA 2→3→2](docs/screenshots/18_hpa_scaling.png) |
 | 10 | Troubleshooting labs | ✅ done | [ImagePullBackOff](docs/screenshots/19_lab_broken_image.png), [no endpoints](docs/screenshots/20_lab_broken_service.png), [never Ready](docs/screenshots/21_lab_broken_readiness.png) |
 | 11 | Terraform + Argo CD + README | ✅ code done (Argo CD sync tested in 12B, AWS in 12C) | [validate + IaC scan](docs/screenshots/22_terraform_validate.png), [/metrics](docs/screenshots/23_metrics_endpoint.png) |
-| 12 | Guided manual phase: push, GHCR, GitOps demo, AWS | ⏳ | |
+| 12A | Push + first real CI run | ✅ green on the first run; GHCR images public | [run #1](docs/screenshots/24_ci_pipeline_green.png), [GHCR](docs/screenshots/26_ghcr_backend.png), [commits](docs/screenshots/28_commit_history.png) |
+| 12B | Argo CD + live demo rehearsal (v1.0.0 → v1.1.0) | ✅ done | [Argo CD](docs/screenshots/29_argocd_synced.png), [timeline](docs/screenshots/34_gitops_timeline.png), [after](docs/screenshots/31_demo_after_v1.1.0.png) |
+| 12C | AWS window: Terraform plan/apply, EKS deploy, destroy | ⏳ needs your AWS account | |
+| 12D | Wrap-up | ⏳ | |

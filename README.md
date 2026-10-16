@@ -153,14 +153,14 @@ Dockerfiles and Terraform for misconfigurations. Accepted findings are listed wi
 |---|---|---|
 | **M1** Application | [backend/app/](backend/app/), [backend/alembic/versions/](backend/alembic/versions/), [frontend/src/](frontend/src/), [docker-compose.yml](docker-compose.yml) | [API calls](docs/screenshots/02_backend_api.png) · [Swagger](docs/screenshots/03_swagger.png) · [board](docs/screenshots/06_ui_board.png) · [report form](docs/screenshots/07_ui_report_modal.png) · [error state](docs/screenshots/08_ui_backend_down.png) · [migrations](docs/screenshots/04_migrations.png) |
 | **M2** Testing | [backend/tests/](backend/tests/), [backend/pytest.ini](backend/pytest.ini), [conftest.py](backend/tests/conftest.py) | [pytest -v, 23 tests](docs/screenshots/05_pytest.png) |
-| **M3** Git & GitHub | this repo, [.gitignore](.gitignore) | commit history ⏳ Phase 12 |
+| **M3** Git & GitHub | this repo, [.gitignore](.gitignore) | [commit history](docs/screenshots/28_commit_history.png) |
 | **M4** Docker | [backend/Dockerfile](backend/Dockerfile), [frontend/Dockerfile](frontend/Dockerfile) (multi-stage), [docker-compose.yml](docker-compose.yml) | [compose up + psql + non-root `id`](docs/screenshots/09_compose_up.png) · [UI on :3000](docs/screenshots/10_ui_compose.png) |
-| **M5** CI/CD | [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) · green run + GHCR SHA tags ⏳ Phase 12 |
-| **M6** DevSecOps | Trivy steps in the workflow, [.trivyignore](.trivyignore) | [Trivy: clean images, failing old image](docs/screenshots/11_trivy_local.png) · [config scan](docs/screenshots/22_terraform_validate.png) · pipeline Trivy output ⏳ Phase 12 |
+| **M5** CI/CD | [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml) | [jobs + actionlint](docs/screenshots/12_ci_workflow_lint.png) · [green run #1](docs/screenshots/24_ci_pipeline_green.png) · [run #2](docs/screenshots/33_ci_run2_green.png) · [build/scan/push steps](docs/screenshots/25_ci_job_build_scan_push.png) · [GHCR backend :SHA](docs/screenshots/26_ghcr_backend.png) · [GHCR frontend :SHA](docs/screenshots/27_ghcr_frontend.png) |
+| **M6** DevSecOps | Trivy steps in the workflow, [.trivyignore](.trivyignore) | [Trivy: clean images, failing old image](docs/screenshots/11_trivy_local.png) · [config scan](docs/screenshots/22_terraform_validate.png) · [Trivy steps in the pipeline](docs/screenshots/25_ci_job_build_scan_push.png) · Trivy tables on the run summary ⏳ (visible when signed in) |
 | **M7** Terraform | [terraform/](terraform/), [terraform.tfvars.example](terraform/terraform.tfvars.example) | [fmt + init + validate](docs/screenshots/22_terraform_validate.png) · plan / console / destroy ⏳ Phase 12 |
-| **M8** Kubernetes + Helm | [k8s/namespace.yaml](k8s/namespace.yaml), [helm/foundit/](helm/foundit/) | [helm list, pods, svc, ingress, hpa](docs/screenshots/13_helm_minikube.png) · [UI through the Ingress](docs/screenshots/14_ui_ingress.png) · [troubleshooting labs](troubleshooting/README.md) |
+| **M8** Kubernetes + Helm | [k8s/namespace.yaml](k8s/namespace.yaml), [helm/foundit/](helm/foundit/), [argocd/](argocd/) | [helm list, pods, svc, ingress, hpa](docs/screenshots/13_helm_minikube.png) · [Argo CD app tree](docs/screenshots/29_argocd_synced.png) · [UI through the Ingress](docs/screenshots/14_ui_ingress.png) · [troubleshooting labs](troubleshooting/README.md) |
 | **M9** Observability | [monitoring/](monitoring/), [servicemonitor.yaml](helm/foundit/templates/servicemonitor.yaml) | [/metrics](docs/screenshots/23_metrics_endpoint.png) · [targets UP](docs/screenshots/15_prometheus_targets.png) · [Grafana](docs/screenshots/17_grafana_dashboard.png) · [alerts](docs/screenshots/16_prometheus_alerts.png) · [HPA 2→3→2](docs/screenshots/18_hpa_scaling.png) |
-| **M10** Docs + demo | this README, [DESIGN.md](DESIGN.md), [LEARNING.md](LEARNING.md) | live demo below ⏳ Phase 12 |
+| **M10** Docs + demo | this README, [DESIGN.md](DESIGN.md), [LEARNING.md](LEARNING.md) | rehearsed demo: [before v1.0.0](docs/screenshots/30_demo_before_v1.0.0.png) → [CI run #2](docs/screenshots/33_ci_run2_green.png) → [GitOps timeline](docs/screenshots/34_gitops_timeline.png) → [Argo CD synced](docs/screenshots/32_argocd_synced_v1.1.0.png) → [after v1.1.0](docs/screenshots/31_demo_after_v1.1.0.png) |
 
 ## Live demo (M10): commit → pipeline → deployment
 
@@ -171,6 +171,20 @@ Dockerfiles and Terraform for misconfigurations. Accepted findings are listed wi
 5. Argo CD picks up the bump commit (or press **Refresh**), sees `OutOfSync`, syncs, and the pods roll one
    at a time (`maxUnavailable: 0`).
 6. Reload the page: the footer shows the new version. `kubectl get deploy -n foundit -o wide` shows the new SHA.
+
+### On this laptop: one heavy add-on at a time
+
+minikube here is capped at 2.73 GiB. The app plus **either** the monitoring stack **or** Argo CD fits;
+all three together overload the node (probes start timing out everywhere – see LEARNING.md, Phase 9 and 12).
+For the presentation, switch between them:
+
+```bash
+# pause monitoring (for the GitOps demo)
+kubectl patch prometheus kube-prometheus-stack-prometheus -n monitoring --type merge -p '{"spec":{"replicas":0}}'
+kubectl scale deploy -n monitoring --all --replicas=0
+# resume monitoring (restores everything from the values file)
+helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring -f monitoring/prometheus-values.yaml
+```
 
 ## Cost and cleanup
 

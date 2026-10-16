@@ -147,6 +147,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          output: trivy-backend.txt
 
       - name: Trivy gate - frontend image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -156,6 +157,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           skip-setup-trivy: true
+          output: trivy-frontend.txt
 
       # Misconfiguration scan of the Helm chart and Terraform: reported, but not blocking.
       - name: Trivy config scan - helm + terraform (report only)
@@ -168,6 +170,22 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "0"
           skip-setup-trivy: true
+          output: trivy-config.txt
+
+      # Step logs need a GitHub login to view; the run summary page is public. Runs even when a gate fails,
+      # so the reason for a red build is visible right there.
+      - name: Publish Trivy results to the run summary
+        if: always()
+        run: |
+          for f in backend frontend config; do
+            [ -f "trivy-$f.txt" ] || continue
+            {
+              echo "### Trivy - $f"
+              echo '```'
+              if [ -s "trivy-$f.txt" ]; then cat "trivy-$f.txt"; else echo "No HIGH/CRITICAL findings."; fi
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Log in to GHCR
         if: env.IS_MAIN_PUSH == 'true'

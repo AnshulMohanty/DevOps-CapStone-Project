@@ -659,6 +659,10 @@ sequenceDiagram
 
 ## Phase 12C – The AWS window: Terraform → EKS → FoundIt on the internet → destroy
 
+> My own AWS account was still under verification (AWS can take 2–3 days to activate a new account), so this
+> phase ran on a friend's account, with their permission, through a dedicated IAM user. Its identifiers are
+> blurred in the screenshots.
+
 **In one line:** the same Terraform, the same Helm chart and the same CI-built images ran on a real
 AWS EKS cluster behind a Network Load Balancer, then everything was destroyed – and the account's own
 guardrails taught more than the happy path would have.

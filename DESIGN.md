@@ -196,6 +196,7 @@ One table, `items`.
 | D60 | Worker nodes are `c7i-flex.large`, not `t3.medium` | the account is on the AWS Free plan, which only launches Free-Tier-eligible types; `t3.medium` left the node group stuck in CREATING |
 | D61 | EBS CSI permissions via **EKS Pod Identity** instead of IRSA (`enable_irsa = false`) | a second SCP denies `iam:CreateOpenIDConnectProvider`; Pod Identity needs no OIDC provider and is AWS's newer mechanism anyway (supersedes D49's IRSA) |
 | D62 | A node group stuck in CREATING was deleted with the AWS CLI and dropped from state (`terraform state rm`) | waiting for EKS to time it out would have cost 20+ minutes of cluster time; its deletion finishes on AWS's side and is checked before `destroy` |
+| D63 | The AWS phase ran on a friend's AWS account (with permission) through a dedicated IAM user; account identifiers are blurred in the screenshots | my own AWS account was still under verification (2–3 days); keys stayed in `~/.aws`, never in the repo |
 
 ## 8. Phase status
 
@@ -215,4 +216,4 @@ One table, `items`.
 | 12A | Push + first real CI run | ✅ green on the first run; GHCR images public | [run #1](docs/screenshots/24_ci_pipeline_green.png), [GHCR](docs/screenshots/26_ghcr_backend.png), [commits](docs/screenshots/28_commit_history.png) |
 | 12B | Argo CD + live demo rehearsal (v1.0.0 → v1.1.0) | ✅ done | [Argo CD](docs/screenshots/29_argocd_synced.png), [timeline](docs/screenshots/34_gitops_timeline.png), [after](docs/screenshots/31_demo_after_v1.1.0.png) |
 | 12C | AWS window: Terraform plan/apply, EKS deploy, destroy | ✅ done (ap-southeast-2, ~1.5 h) | [plan](docs/screenshots/35_terraform_plan.png), [apply](docs/screenshots/36_terraform_apply.png), [EKS](docs/screenshots/39_aws_eks_cluster.png), [app on AWS](docs/screenshots/38_eks_app_via_nlb.png), [destroy](docs/screenshots/46_terraform_destroy.png) |
-| 12D | Wrap-up: docs, memory, final push | ✅ done | this file, [README rubric map](README.md#rubric-map-gradingmd) |
+| 12D | Wrap-up: docs, memory, final push | ✅ done | this file, [README rubric map](README.md#rubric) |

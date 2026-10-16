@@ -1,7 +1,7 @@
 Terraform – AWS VPC + EKS
 =========================
 
-What `terraform apply` builds in `ap-south-1` (Mumbai):
+What `terraform apply` builds in `ap-southeast-2` (Sydney – the only region the AWS account's organization policy allows):
 
 ```mermaid
 flowchart TB
@@ -30,15 +30,15 @@ flowchart TB
 
 ## Cost
 
-These are rough on-demand prices for ap-south-1. Check the AWS pricing pages before you start.
+These are rough on-demand prices for ap-southeast-2. Check the AWS pricing pages before you start.
 
 | Resource | ≈ per hour |
 |---|---|
 | EKS control plane | $0.10 |
-| 2 × t3.medium | $0.09 |
+| 2 × t3.medium | $0.11 |
 | NAT gateway (+ data) | $0.06 |
 | load balancer (ingress-nginx) | $0.03 |
-| **total** | **≈ $0.30/hour → under $1 for a 2-hour window** |
+| **total** | **≈ $0.32/hour → under $1 for a 2-hour window** |
 
 Not destroying it costs about $7 per day. Set an AWS Budget alert before you `apply`.
 
@@ -51,7 +51,7 @@ terraform validate
 terraform plan -out tfplan                          # screenshot (M7)
 terraform apply tfplan                              # ~15-20 min
 
-aws eks update-kubeconfig --region ap-south-1 --name foundit-eks
+aws eks update-kubeconfig --region ap-southeast-2 --name foundit-eks
 kubectl get nodes
 
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -75,7 +75,7 @@ kubectl get svc -A | grep LoadBalancer       # must print nothing before you con
 terraform destroy                            # screenshot (M7)
 ```
 
-Then check in the AWS Console (ap-south-1) that none of these are left: EKS clusters, EC2 instances,
+Then check in the AWS Console (ap-southeast-2) that none of these are left: EKS clusters, EC2 instances,
 NAT gateways, Elastic IPs, load balancers, EBS volumes, VPCs named `foundit-eks-vpc`.
 The KMS key the EKS module created stays in "pending deletion" for 7 days. That's normal, and it
 costs at most a few cents.

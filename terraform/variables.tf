@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region for the VPC and the EKS cluster"
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-southeast-2"
 }
 
 variable "cluster_name" {

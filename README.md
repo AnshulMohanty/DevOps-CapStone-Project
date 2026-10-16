@@ -59,7 +59,7 @@ flowchart LR
 | CI/CD | GitHub Actions → GHCR, Trivy, kind; GitOps with Argo CD |
 | Kubernetes | Helm chart: Deployments, Services, Ingress, HPA, PDB, PVC, ServiceMonitor |
 | Observability | kube-prometheus-stack (Prometheus, Grafana), PrometheusRule alerts |
-| Infrastructure | Terraform: AWS VPC + EKS (ap-south-1) |
+| Infrastructure | Terraform: AWS VPC + EKS (ap-southeast-2, Sydney) |
 
 ## API
 

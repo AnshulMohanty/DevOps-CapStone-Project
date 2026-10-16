@@ -55,6 +55,8 @@ module "eks" {
     aws-ebs-csi-driver = {
       most_recent              = true
       service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
+      # EKS >= 1.30 ships no default StorageClass; let the addon create a gp3 one and mark it default.
+      configuration_values = jsonencode({ defaultStorageClass = { enabled = true } })
     }
     # Feeds CPU numbers to the HorizontalPodAutoscaler.
     metrics-server = { most_recent = true }

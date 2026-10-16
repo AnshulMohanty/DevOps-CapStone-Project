@@ -1,10 +1,10 @@
 # AWS EKS (2 x t3.medium). The Ingress has no host so it answers on the ELB hostname,
-# and the database volume is an EBS disk provisioned by the EBS CSI driver.
+# and the database volume is a gp3 EBS disk provisioned by the EBS CSI driver.
 ingress:
   host: ""
 postgres:
   persistence:
-    storageClass: gp2
+    storageClass: ""        # the cluster default: gp3, created by the EBS CSI addon (terraform/main.tf)
     size: 2Gi
 hpa:
   maxReplicas: 6

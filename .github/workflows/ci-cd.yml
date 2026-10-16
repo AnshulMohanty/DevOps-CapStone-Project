@@ -269,10 +269,14 @@ jobs:
           cat helm/foundit/values-image.yaml
 
       # Pushes made with GITHUB_TOKEN never trigger another workflow run, and [skip ci] makes that explicit.
+      # The deploy commit is attributed to the person whose push triggered it (GitHub noreply address).
       - name: Commit and push
+        env:
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "$ACTOR"
+          git config user.email "${ACTOR_ID}+${ACTOR}@users.noreply.github.com"
           git add helm/foundit/values-image.yaml
           if git diff --cached --quiet; then echo "Tag already current"; exit 0; fi
           git commit -m "deploy: foundit ${GITHUB_SHA::7} [skip ci]"

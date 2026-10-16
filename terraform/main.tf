@@ -47,14 +47,19 @@ module "eks" {
   cluster_endpoint_public_access_cidrs     = var.api_allowed_cidrs
   enable_cluster_creator_admin_permissions = true
 
+  # No IRSA: the AWS organization's policy denies iam:CreateOpenIDConnectProvider in this account.
+  # Pods get AWS permissions through EKS Pod Identity instead (below), which needs no OIDC provider.
+  enable_irsa = false
+
   cluster_addons = {
     coredns    = { most_recent = true }
     kube-proxy = { most_recent = true }
     vpc-cni    = { most_recent = true, before_compute = true }
+    # Runs on every node and hands pods the credentials of the IAM role associated with their service account.
+    eks-pod-identity-agent = { most_recent = true, before_compute = true }
     # Without the EBS CSI driver a PersistentVolumeClaim (the Postgres volume) stays Pending.
     aws-ebs-csi-driver = {
-      most_recent              = true
-      service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
+      most_recent = true
       # EKS >= 1.30 ships no default StorageClass; let the addon create a gp3 one and mark it default.
       configuration_values = jsonencode({ defaultStorageClass = { enabled = true } })
     }
@@ -74,19 +79,28 @@ module "eks" {
   }
 }
 
-# IAM role for the EBS CSI driver's service account (IRSA): only that one pod may create/attach volumes,
-# instead of giving the permission to every node.
-module "ebs_csi_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "5.55.0"
+# IAM role for the EBS CSI driver, given to its service account through EKS Pod Identity:
+# only that one pod may create/attach volumes, instead of giving the permission to every node.
+resource "aws_iam_role" "ebs_csi" {
+  name = "${var.cluster_name}-ebs-csi"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = ["sts:AssumeRole", "sts:TagSession"]
+    }]
+  })
+}
 
-  role_name             = "${var.cluster_name}-ebs-csi"
-  attach_ebs_csi_policy = true
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
 
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
-    }
-  }
+resource "aws_eks_pod_identity_association" "ebs_csi" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "kube-system"
+  service_account = "ebs-csi-controller-sa"
+  role_arn        = aws_iam_role.ebs_csi.arn
 }

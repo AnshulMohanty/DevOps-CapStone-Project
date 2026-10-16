@@ -42,7 +42,7 @@ variable "api_allowed_cidrs" {
 variable "node_instance_type" {
   description = "EC2 instance type of the worker nodes"
   type        = string
-  default     = "t3.medium"
+  default     = "c7i-flex.large"
 }
 
 variable "node_count" {

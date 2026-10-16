@@ -269,7 +269,9 @@ kubectl apply -f argocd/foundit-app.yaml
 > On this laptop minikube is capped at 2.73 GiB: the app plus **either** monitoring **or** Argo CD fits.
 > Pause monitoring for the GitOps demo with
 > `kubectl patch prometheus kube-prometheus-stack-prometheus -n monitoring --type merge -p '{"spec":{"replicas":0}}' && kubectl scale deploy -n monitoring --all --replicas=0`
-> and bring it back with `helm upgrade kube-prometheus-stack … -f monitoring/prometheus-values.yaml`.
+> and bring it back with `helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring -f monitoring/prometheus-values.yaml --force-conflicts`
+> (Helm 4 applies server-side, so it must take back the fields that `kubectl patch`/`scale` changed — the same goes for
+> pausing Argo CD with `kubectl scale` and restoring it with `helm upgrade argocd … --force-conflicts`).
 </details>
 
 <details>

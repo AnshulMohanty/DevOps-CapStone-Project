@@ -1,5 +1,37 @@
 <div align="center">
 
+## 📌 Submission links
+
+**Anshul Mohanty · Roll No 10191 · Batch 2028 · Section A**
+
+[![Watch on YouTube](https://img.shields.io/badge/%E2%96%B6%20Watch%20the%20demo-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=J7fwITHZJPA)
+[![Demo video on Google Drive](https://img.shields.io/badge/Demo%20video-Google%20Drive-1A73E8?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1VCKWqnQeH0bZYMiNE77b_okiriHwINRR/view?usp=drive_link)
+[![Presentation PDF](https://img.shields.io/badge/Presentation-PDF%20%C2%B7%2014%20slides-34A853?style=for-the-badge&logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1NHW3pUjpn-OWdpA-C0vQQ_bd2yTNoRxX/view?usp=drive_link)
+
+<a href="https://www.youtube.com/watch?v=J7fwITHZJPA"><img src="https://img.youtube.com/vi/J7fwITHZJPA/maxresdefault.jpg" alt="FoundIt demo video — click to watch on YouTube" width="720"></a>
+
+<sub>▶ Click the thumbnail to watch the 2:54 demo on YouTube</sub>
+
+| | Link | What it is |
+|:-:|---|---|
+| 🎬 | **[Demo video — YouTube](https://www.youtube.com/watch?v=J7fwITHZJPA)** | 2:54 narrated walkthrough: the app, the architecture, a **live commit → CI/CD → Argo CD → production** run, monitoring, problems I solved, AWS EKS |
+| 📁 | **[Demo video — Google Drive](https://drive.google.com/file/d/1VCKWqnQeH0bZYMiNE77b_okiriHwINRR/view?usp=drive_link)** | the same video as a downloadable file |
+| 📊 | **[Presentation — PDF](https://drive.google.com/file/d/1NHW3pUjpn-OWdpA-C0vQQ_bd2yTNoRxX/view?usp=drive_link)** | 14-slide deck: architecture, pipeline, DevSecOps, Kubernetes, GitOps, observability, Terraform/AWS, results |
+| 💻 | **[This repository](https://github.com/AnshulMohanty/DevOps-CapStone-Project)** | all code, the 5-job pipeline, Helm chart, Terraform, 54 evidence screenshots and docs |
+
+</div>
+
+```mermaid
+flowchart LR
+    V["🎬 Watch the demo<br/><b>2:54 video</b><br/>YouTube · Google Drive"] --> P["📊 Read the deck<br/><b>14-slide PDF</b><br/>the whole project"]
+    P --> R["💻 Explore the repo<br/><b>code + evidence</b><br/>README · DESIGN · LEARNING"]
+    R --> G["✅ Rubric map<br/><b>M1 – M10</b><br/>every module linked"]
+```
+
+---
+
+<div align="center">
+
 # 🔎 FoundIt — Campus Lost & Found
 
 **A small full-stack app, shipped the way production software is shipped:**
@@ -386,6 +418,8 @@ sequenceDiagram
 [the recorded timeline](docs/screenshots/34_gitops_timeline.png) ·
 [pipeline run #2](docs/screenshots/49_ci_run_summary.png)
 
+📺 **Watch it happen:** [the demo video](https://www.youtube.com/watch?v=J7fwITHZJPA) records a real run (`FoundIt UI 1.2.0`, pipeline run #4, 3 m 42 s).
+
 **To repeat it live:** change something visible (e.g. `"version"` in `frontend/package.json`) → commit → push →
 watch Actions → watch Argo CD go *OutOfSync → Synced* → reload the page.
 
@@ -494,7 +528,7 @@ screenshots [1](docs/screenshots/19_lab_broken_image.png) · [2](docs/screenshot
 | **M7** Terraform (15) | [terraform/](terraform/), [terraform.tfvars.example](terraform/terraform.tfvars.example) | [validate](docs/screenshots/22_terraform_validate.png) · [plan](docs/screenshots/35_terraform_plan.png) · [apply](docs/screenshots/36_terraform_apply.png) · [EKS](docs/screenshots/39_aws_eks_cluster.png) · [node group](docs/screenshots/40_aws_eks_nodegroups.png) · [VPC](docs/screenshots/41_aws_vpc.png) · [destroy](docs/screenshots/46_terraform_destroy.png) · [after](docs/screenshots/47_aws_after_destroy.png) |
 | **M8** Kubernetes + Helm (15) | [k8s/](k8s/), [helm/foundit/](helm/foundit/), [argocd/](argocd/) | [pods · svc · helm list · ingress](docs/screenshots/13_helm_minikube.png) · [UI via Ingress](docs/screenshots/14_ui_ingress.png) · [on EKS](docs/screenshots/37_eks_kubectl.png) · [via AWS NLB](docs/screenshots/38_eks_app_via_nlb.png) · [Argo CD](docs/screenshots/29_argocd_synced.png) |
 | **M9** Observability (10) | [monitoring/](monitoring/), [servicemonitor.yaml](helm/foundit/templates/servicemonitor.yaml) | [/metrics](docs/screenshots/23_metrics_endpoint.png) · [targets UP](docs/screenshots/15_prometheus_targets.png) · [Grafana](docs/screenshots/17_grafana_dashboard.png) · [alerts](docs/screenshots/16_prometheus_alerts.png) · [HPA](docs/screenshots/18_hpa_scaling.png) |
-| **M10** Docs + demo (5) | this README, [DESIGN.md](DESIGN.md), [LEARNING.md](LEARNING.md) | rehearsed demo: [before](docs/screenshots/30_demo_before_v1.0.0.png) → [run](docs/screenshots/49_ci_run_summary.png) → [timeline](docs/screenshots/34_gitops_timeline.png) → [synced](docs/screenshots/32_argocd_synced_v1.1.0.png) → [after](docs/screenshots/31_demo_after_v1.1.0.png) |
+| **M10** Docs + demo (5) | this README, [DESIGN.md](DESIGN.md), [LEARNING.md](LEARNING.md), [demo video](https://www.youtube.com/watch?v=J7fwITHZJPA), [presentation](https://drive.google.com/file/d/1NHW3pUjpn-OWdpA-C0vQQ_bd2yTNoRxX/view?usp=drive_link) | rehearsed demo: [before](docs/screenshots/30_demo_before_v1.0.0.png) → [run](docs/screenshots/49_ci_run_summary.png) → [timeline](docs/screenshots/34_gitops_timeline.png) → [synced](docs/screenshots/32_argocd_synced_v1.1.0.png) → [after](docs/screenshots/31_demo_after_v1.1.0.png) |
 
 <details>
 <summary><b>Submission checklist (GRADING.md) — all ✅</b></summary>

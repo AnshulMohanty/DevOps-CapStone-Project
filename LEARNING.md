@@ -654,3 +654,62 @@ sequenceDiagram
   triggers workflows) and carries `[skip ci]`.
 - *How do you roll back?* `git revert` the deploy commit (Argo CD syncs the old tag) – or "History and
   rollback" in Argo CD for an emergency.
+
+---
+
+## Phase 12C – The AWS window: Terraform → EKS → FoundIt on the internet → destroy
+
+**In one line:** the same Terraform, the same Helm chart and the same CI-built images ran on a real
+AWS EKS cluster behind a Network Load Balancer, then everything was destroyed – and the account's own
+guardrails taught more than the happy path would have.
+
+**What happened (in order)**
+
+| Step | Result |
+|---|---|
+| `aws configure --profile foundit` | IAM user with AdministratorAccess – but the account is in an **AWS Organization** |
+| pre-flight read-only checks | every EC2/EKS call in 8 regions: `explicit deny in a service control policy` |
+| Sydney (`ap-southeast-2`) | allowed – the only region the organization permits |
+| `terraform plan` | 62 to add, 0 change, 0 destroy |
+| `apply` run 1 | VPC, NAT, IAM, EKS control plane (8 m 36 s) ✓ – then 2 blockers (below) |
+| fixes | `c7i-flex.large` nodes, EKS Pod Identity instead of IRSA, stuck node group deleted + `state rm` |
+| `apply` run 2 | 10 added: node group (1 m 15 s), Pod Identity association, 6 addons ✓ |
+| deploy | ingress-nginx → AWS **NLB**; FoundIt with `values-eks.yaml` + the GHCR images; Postgres on a gp3 EBS volume |
+| teardown | `helm uninstall` (app, then ingress) → NLB and EBS volume gone → `terraform destroy` |
+
+**The three guardrails I hit, and how each was diagnosed**
+
+| Symptom | Where the real reason was | Fix |
+|---|---|---|
+| every call `UnauthorizedOperation … explicit deny in a service control policy` | the error text itself – an SCP overrides even AdministratorAccess | use the one allowed region |
+| node group stuck in `CREATING`, 0 instances | **Auto Scaling activity history**: `instance type is not eligible for Free Tier` | the account is on the AWS Free plan → `c7i-flex.large` (Free-Tier eligible, 2 vCPU / 4 GiB) |
+| `apply` 403 on `iam:CreateOpenIDConnectProvider` | a second SCP | `enable_irsa = false` + **EKS Pod Identity** for the EBS CSI driver |
+
+**Concepts**
+
+| Term | Meaning |
+|---|---|
+| AWS Organization / SCP | a parent account sets guardrails for member accounts; an SCP *deny* beats any IAM *allow* |
+| IRSA | pod → service account → IAM role, trusted through the cluster's **OIDC provider** |
+| EKS Pod Identity | pod → service account → IAM role, trusted through `pods.eks.amazonaws.com` + an *association*; no OIDC provider |
+| `terraform state rm` | forget a resource without touching it in the cloud (used for the node group I deleted by hand) |
+| NLB via `service.beta.kubernetes.io/aws-load-balancer-type: nlb` | a `type: LoadBalancer` Service makes AWS create a Network Load Balancer in the public subnets |
+
+**Gotchas**
+- An AWS Budget is an alarm, not a limit – the only real limit is `terraform destroy`.
+- Kubernetes (not Terraform) created the NLB and the EBS volume, so they were removed first; otherwise
+  `destroy` hangs on the VPC.
+- The console screenshots were taken through a 1-hour **read-only** federated session
+  (`sts get-federation-token` + ReadOnlyAccess) – the EKS *Nodes* tab says "Unauthorized" because that
+  session is not a Kubernetes user, while *Node groups* (EKS API) works.
+- The HPA showed `cpu: <unknown>` for the first minutes on the fresh cluster – metrics-server needs a
+  couple of scrape cycles.
+
+**Viva answers**
+- *Your `t3.medium` nodes never started – how did you find out why?* EKS only said CREATING. The node
+  group's Auto Scaling group had the real error in its scaling activities: the account only allows
+  Free-Tier-eligible instance types.
+- *Why Pod Identity instead of IRSA?* IRSA needs an IAM OIDC provider, which this account's SCP forbids.
+  Pod Identity gives the same per-pod IAM role without one, and is AWS's newer recommended way.
+- *How do you know nothing was left running?* `terraform destroy` reported 0 remaining, and the AWS CLI /
+  console showed no `foundit` VPC, cluster, NAT gateway, Elastic IP, load balancer or EBS volume.

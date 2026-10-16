@@ -182,7 +182,7 @@ One table, `items`.
 | D46 | Troubleshooting labs are standalone `foundit-lab-*` objects next to the release | they can be broken and fixed live without touching the real deployment (or confusing Argo CD) |
 | D47 | Terraform uses the community VPC (5.8.1) and EKS (20.37.1) modules, AWS provider 5.x, local state | versions already proven in topic 20; local state is fine for one person and one short window (S3 + lockfile for a team) |
 | D48 | One NAT gateway, 2 AZs, nodes in private subnets, load balancers in public subnets | the NAT gateway is the most expensive VPC part; one AZ outage is an accepted risk for a demo |
-| D49 | EKS addons managed by Terraform: vpc-cni, coredns, kube-proxy, **aws-ebs-csi-driver with an IRSA role**, metrics-server | without the EBS CSI driver the Postgres PVC stays Pending; IRSA gives volume permissions to one service account instead of every node |
+| D49 | EKS addons managed by Terraform: vpc-cni, coredns, kube-proxy, **aws-ebs-csi-driver with its own IAM role** (planned as IRSA, see D61), metrics-server | without the EBS CSI driver the Postgres PVC stays Pending; IRSA gives volume permissions to one service account instead of every node |
 | D50 | `api_allowed_cidrs` has no default and rejects `0.0.0.0/0` | the EKS API is public (kubectl from my laptop) but only to my IP; nobody can open it to the internet by accident |
 | D51 | Pods use read-only root filesystems (backend, frontend, init container, postgres) with `emptyDir` for the paths that must be writable; postgres runs as uid 70 | a compromised process can't modify its own image; found by the Trivy config scan |
 | D52 | `.trivyignore` holds accepted findings, each with a written reason; CI's config scan skips the deliberately broken labs | accepted risk is documented and reviewable instead of silently ignored |
@@ -192,6 +192,10 @@ One table, `items`.
 | D56 | GHCR packages needed no visibility change | images pushed from a public repo with the `org.opencontainers.image.source` label inherit its public visibility – verified with an anonymous pull |
 | D57 | On this laptop, monitoring and Argo CD are not run at the same time | app + Argo CD + monitoring pushed the 2.73 GiB node to 545% CPU and cluster-wide probe failures; each fits alone |
 | D58 | Trivy tables are also written to the run summary | the reason for a red build is visible without opening logs (GitHub shows summaries and logs to signed-in users only) |
+| D59 | AWS region ap-southeast-2 (Sydney) | the account's organization SCP denies EC2/EKS in every other region (tested 8 regions) |
+| D60 | Worker nodes are `c7i-flex.large`, not `t3.medium` | the account is on the AWS Free plan, which only launches Free-Tier-eligible types; `t3.medium` left the node group stuck in CREATING |
+| D61 | EBS CSI permissions via **EKS Pod Identity** instead of IRSA (`enable_irsa = false`) | a second SCP denies `iam:CreateOpenIDConnectProvider`; Pod Identity needs no OIDC provider and is AWS's newer mechanism anyway (supersedes D49's IRSA) |
+| D62 | A node group stuck in CREATING was deleted with the AWS CLI and dropped from state (`terraform state rm`) | waiting for EKS to time it out would have cost 20+ minutes of cluster time; its deletion finishes on AWS's side and is checked before `destroy` |
 
 ## 8. Phase status
 
@@ -210,5 +214,5 @@ One table, `items`.
 | 11 | Terraform + Argo CD + README | ✅ code done (Argo CD sync tested in 12B, AWS in 12C) | [validate + IaC scan](docs/screenshots/22_terraform_validate.png), [/metrics](docs/screenshots/23_metrics_endpoint.png) |
 | 12A | Push + first real CI run | ✅ green on the first run; GHCR images public | [run #1](docs/screenshots/24_ci_pipeline_green.png), [GHCR](docs/screenshots/26_ghcr_backend.png), [commits](docs/screenshots/28_commit_history.png) |
 | 12B | Argo CD + live demo rehearsal (v1.0.0 → v1.1.0) | ✅ done | [Argo CD](docs/screenshots/29_argocd_synced.png), [timeline](docs/screenshots/34_gitops_timeline.png), [after](docs/screenshots/31_demo_after_v1.1.0.png) |
-| 12C | AWS window: Terraform plan/apply, EKS deploy, destroy | ⏳ needs your AWS account | |
-| 12D | Wrap-up | ⏳ | |
+| 12C | AWS window: Terraform plan/apply, EKS deploy, destroy | ✅ done (ap-southeast-2, ~1.5 h) | [plan](docs/screenshots/35_terraform_plan.png), [apply](docs/screenshots/36_terraform_apply.png), [EKS](docs/screenshots/39_aws_eks_cluster.png), [app on AWS](docs/screenshots/38_eks_app_via_nlb.png), [destroy](docs/screenshots/46_terraform_destroy.png) |
+| 12D | Wrap-up: docs, memory, final push | ✅ done | this file, [README rubric map](README.md#rubric-map-gradingmd) |
